@@ -50,6 +50,10 @@ Open the service Settings page -> Networking -> Public Networking -> Generate Do
 
 Open the generated HTTPS URL. The game automatically switches its WebSocket connection to `wss://` when served over HTTPS.
 
+
+## Realtime reliability
+MineNova prefers secure WebSockets (`wss://`) for ranked play. Version 3.1 also includes an authenticated HTTP-sync fallback. If a browser/network blocks WebSockets, players can still queue, match, play, finish, and rematch. The multiplayer window shows which transport is active.
+
 ## 7. Test real matchmaking
 - Open the public URL in two separate browser profiles/devices.
 - Create two accounts.

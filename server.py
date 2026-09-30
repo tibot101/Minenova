@@ -5,6 +5,7 @@ import base64
 import hashlib
 import hmac
 import json
+import logging
 import os
 import random
 import re
@@ -38,6 +39,10 @@ LEVELS = {
     "expert": {"w": 30, "h": 16, "m": 99},
 }
 USERNAME_RE = re.compile(r"^[A-Za-z0-9_-]{3,20}$")
+RANKED_MODES = tuple(LEVELS)
+LIVE_TTL_SECONDS = 35.0
+QUEUE_TTL_SECONDS = 90.0
+logger = logging.getLogger("minenova")
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
@@ -45,7 +50,7 @@ async def lifespan(_: FastAPI):
     yield
 
 
-app = FastAPI(title="MineNova Infinity Server", version="3.0", lifespan=lifespan)
+app = FastAPI(title="MineNova Infinity Server", version="3.1", lifespan=lifespan)
 
 
 def db() -> sqlite3.Connection:
@@ -91,7 +96,20 @@ def init_db() -> None:
                 FOREIGN KEY(player2_id) REFERENCES users(id),
                 FOREIGN KEY(winner_id) REFERENCES users(id)
             );
+            CREATE TABLE IF NOT EXISTS mode_ratings (
+                user_id INTEGER NOT NULL,
+                mode TEXT NOT NULL,
+                rating INTEGER NOT NULL DEFAULT 1000,
+                wins INTEGER NOT NULL DEFAULT 0,
+                losses INTEGER NOT NULL DEFAULT 0,
+                matches INTEGER NOT NULL DEFAULT 0,
+                streak INTEGER NOT NULL DEFAULT 0,
+                best_streak INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY(user_id, mode),
+                FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+            );
             CREATE INDEX IF NOT EXISTS idx_users_rating ON users(rating DESC, wins DESC);
+            CREATE INDEX IF NOT EXISTS idx_mode_ratings ON mode_ratings(mode, rating DESC, wins DESC);
             CREATE INDEX IF NOT EXISTS idx_history_p1 ON match_history(player1_id, played_at DESC);
             CREATE INDEX IF NOT EXISTS idx_history_p2 ON match_history(player2_id, played_at DESC);
             """
@@ -157,6 +175,28 @@ def tier_for(rating: int) -> str:
     return "Nova"
 
 
+def get_mode_ratings(user_id: int) -> dict[str, dict[str, int | str]]:
+    result: dict[str, dict[str, int | str]] = {}
+    with db() as con:
+        for mode in RANKED_MODES:
+            con.execute("INSERT OR IGNORE INTO mode_ratings(user_id,mode) VALUES(?,?)", (user_id, mode))
+        rows = con.execute("SELECT * FROM mode_ratings WHERE user_id=?", (user_id,)).fetchall()
+    by_mode = {r["mode"]: r for r in rows}
+    for mode in RANKED_MODES:
+        r = by_mode.get(mode)
+        rating = int(r["rating"]) if r else 1000
+        result[mode] = {
+            "rating": rating,
+            "tier": tier_for(rating),
+            "wins": int(r["wins"]) if r else 0,
+            "losses": int(r["losses"]) if r else 0,
+            "matches": int(r["matches"]) if r else 0,
+            "streak": int(r["streak"]) if r else 0,
+            "bestStreak": int(r["best_streak"]) if r else 0,
+        }
+    return result
+
+
 def public_user(row: sqlite3.Row, include_progress: bool = False) -> dict[str, Any]:
     out = {
         "id": row["id"],
@@ -174,6 +214,20 @@ def public_user(row: sqlite3.Row, include_progress: bool = False) -> dict[str, A
             out["progress"] = json.loads(row["progress_json"] or "{}")
         except Exception:
             out["progress"] = {}
+        out["modeRatings"] = get_mode_ratings(int(row["id"]))
+    return out
+
+
+def public_user_for_mode(row: sqlite3.Row, mode: str) -> dict[str, Any]:
+    out = public_user(row)
+    ranked = get_mode_ratings(int(row["id"])).get(mode, {})
+    out["overallRating"] = out["rating"]
+    out["overallTier"] = out["tier"]
+    out["rating"] = int(ranked.get("rating", 1000))
+    out["tier"] = str(ranked.get("tier", tier_for(out["rating"])))
+    out["modeWins"] = int(ranked.get("wins", 0))
+    out["modeLosses"] = int(ranked.get("losses", 0))
+    out["modeMatches"] = int(ranked.get("matches", 0))
     return out
 
 
@@ -203,7 +257,8 @@ async def index() -> FileResponse:
 
 @app.get("/health")
 async def health() -> dict[str, Any]:
-    return {"ok": True, "online": len(sockets), "queued": sum(len(v) for v in waiting.values())}
+    clean_stale_queues()
+    return {"ok": True, "online": live_count(), "queued": sum(len(v) for v in waiting.values()), "version": app.version}
 
 
 @app.post("/api/register")
@@ -256,13 +311,48 @@ async def save_progress(body: ProgressPayload, user: sqlite3.Row = Depends(auth_
 
 
 @app.get("/api/leaderboard")
-async def leaderboard(limit: int = 50) -> dict[str, Any]:
+async def leaderboard(limit: int = 50, mode: str = "overall") -> dict[str, Any]:
     limit = max(1, min(100, limit))
+    mode = mode.lower().strip()
+    if mode == "overall":
+        with db() as con:
+            rows = con.execute(
+                "SELECT * FROM users ORDER BY rating DESC, wins DESC, matches ASC, id ASC LIMIT ?", (limit,)
+            ).fetchall()
+        return {"mode": mode, "players": [{"rank": i + 1, **public_user(row)} for i, row in enumerate(rows)]}
+    if mode not in RANKED_MODES:
+        raise HTTPException(status_code=400, detail="Unknown ranked mode")
     with db() as con:
+        con.execute(
+            "INSERT OR IGNORE INTO mode_ratings(user_id,mode) SELECT id, ? FROM users",
+            (mode,),
+        )
         rows = con.execute(
-            "SELECT * FROM users ORDER BY rating DESC, wins DESC, matches ASC, id ASC LIMIT ?", (limit,)
+            """
+            SELECT u.id, u.username, mr.rating, mr.wins, mr.losses, mr.matches, mr.streak, mr.best_streak
+            FROM mode_ratings mr
+            JOIN users u ON u.id=mr.user_id
+            WHERE mr.mode=? AND mr.matches>0
+            ORDER BY mr.rating DESC, mr.wins DESC, mr.matches ASC, u.id ASC
+            LIMIT ?
+            """,
+            (mode, limit),
         ).fetchall()
-    return {"players": [{"rank": i + 1, **public_user(row)} for i, row in enumerate(rows)]}
+    players = []
+    for i, row in enumerate(rows):
+        players.append({
+            "rank": i + 1,
+            "id": row["id"],
+            "username": row["username"],
+            "rating": row["rating"],
+            "tier": tier_for(int(row["rating"])),
+            "wins": row["wins"],
+            "losses": row["losses"],
+            "matches": row["matches"],
+            "streak": row["streak"],
+            "bestStreak": row["best_streak"],
+        })
+    return {"mode": mode, "players": players}
 
 
 @app.get("/api/matches")
@@ -298,11 +388,13 @@ async def match_history(user: sqlite3.Row = Depends(auth_user), limit: int = 20)
 
 @app.get("/api/status")
 async def status() -> dict[str, Any]:
+    clean_stale_queues()
     return {
-        "online": len(sockets),
+        "online": live_count(),
         "queued": sum(len(v) for v in waiting.values()),
         "activeMatches": sum(1 for m in matches.values() if not m.ended),
         "queues": {k: len(v) for k, v in waiting.items()},
+        "version": app.version,
     }
 
 
@@ -372,8 +464,40 @@ sockets: dict[int, WebSocket] = {}
 waiting: dict[str, list[int]] = {k: [] for k in LEVELS}
 matches: dict[str, Match] = {}
 active_match_by_user: dict[int, str] = {}
+recent_match_by_user: dict[int, str] = {}
 disconnect_tasks: dict[int, asyncio.Task] = {}
+live_seen: dict[int, float] = {}
+queued_at: dict[int, float] = {}
 state_lock = asyncio.Lock()
+
+
+def touch_live(uid: int) -> None:
+    live_seen[uid] = time.monotonic()
+
+
+def is_live(uid: int, ttl: float = LIVE_TTL_SECONDS) -> bool:
+    if uid in sockets:
+        return True
+    return time.monotonic() - live_seen.get(uid, 0.0) <= ttl
+
+
+def queue_for(uid: int) -> str | None:
+    for difficulty, q in waiting.items():
+        if uid in q:
+            return difficulty
+    return None
+
+
+def clean_stale_queues() -> None:
+    now = time.monotonic()
+    for q in waiting.values():
+        q[:] = [uid for uid in q if now - queued_at.get(uid, 0.0) <= QUEUE_TTL_SECONDS and is_live(uid, QUEUE_TTL_SECONDS)]
+
+
+def live_count() -> int:
+    now = time.monotonic()
+    ids = set(sockets) | {uid for uid, seen in live_seen.items() if now - seen <= LIVE_TTL_SECONDS}
+    return len(ids)
 
 
 def flood(match: Match, state: PlayerState, start: int) -> list[int]:
@@ -499,28 +623,29 @@ async def send_json(uid: int, data: dict[str, Any]) -> None:
         pass
 
 
-async def send_sync(match: Match, uid: int, event_type: str = "match_sync") -> None:
+def match_payload(match: Match, uid: int) -> dict[str, Any]:
     state = match.states[uid]
     oid = other_user(match, uid)
     opponent_row = get_user_by_id(oid)
-    await send_json(uid, {
-        "type": event_type,
-        "match": {
-            "id": match.id,
-            "fieldCode": match.id.split("-")[0].upper(),
-            "difficulty": match.difficulty,
-            "conf": match.conf,
-            "opening": match.opening,
-            "player": 1 if match.players[0] == uid else 2,
-            "opponent": public_user(opponent_row) if opponent_row else {"id": oid, "username": "Opponent", "rating": 1000, "tier": "Silver"},
-            "me": board_snapshot(match, state),
-            "opponentState": summary_snapshot(match, match.states[oid]),
-            "ended": match.ended,
-            "winnerId": match.winner_id,
-            "reason": match.reason,
-            "result": match.result_meta.get(uid),
-        }
-    })
+    return {
+        "id": match.id,
+        "fieldCode": match.id.split("-")[0].upper(),
+        "difficulty": match.difficulty,
+        "conf": match.conf,
+        "opening": match.opening,
+        "player": 1 if match.players[0] == uid else 2,
+        "opponent": public_user_for_mode(opponent_row, match.difficulty) if opponent_row else {"id": oid, "username": "Opponent", "rating": 1000, "tier": "Silver"},
+        "me": board_snapshot(match, state),
+        "opponentState": summary_snapshot(match, match.states[oid]),
+        "ended": match.ended,
+        "winnerId": match.winner_id,
+        "reason": match.reason,
+        "result": match.result_meta.get(uid),
+    }
+
+
+async def send_sync(match: Match, uid: int, event_type: str = "match_sync") -> None:
+    await send_json(uid, {"type": event_type, "match": match_payload(match, uid)})
 
 
 async def sync_both(match: Match) -> None:
@@ -545,28 +670,36 @@ async def create_match(uid1: int, uid2: int, difficulty: str, event_type: str = 
     matches[mid] = match
     active_match_by_user[uid1] = mid
     active_match_by_user[uid2] = mid
+    recent_match_by_user.pop(uid1, None)
+    recent_match_by_user.pop(uid2, None)
     await asyncio.gather(send_sync(match, uid1, event_type), send_sync(match, uid2, event_type))
     return match
 
 
+def _elo_pair(r1: int, r2: int, winner_id: int | None, uid1: int, uid2: int) -> tuple[int, int, float, float]:
+    e1 = 1 / (1 + 10 ** ((r2 - r1) / 400))
+    e2 = 1 - e1
+    if winner_id is None:
+        s1 = s2 = 0.5
+    else:
+        s1, s2 = (1.0, 0.0) if winner_id == uid1 else (0.0, 1.0)
+    k = 32
+    return max(100, round(r1 + k * (s1 - e1))), max(100, round(r2 + k * (s2 - e2))), s1, s2
+
+
 def update_ratings(match: Match, winner_id: int | None) -> None:
     uid1, uid2 = match.players
+    mode = match.difficulty
     with db() as con:
         u1 = con.execute("SELECT * FROM users WHERE id=?", (uid1,)).fetchone()
         u2 = con.execute("SELECT * FROM users WHERE id=?", (uid2,)).fetchone()
         if not u1 or not u2:
             return
-        r1, r2 = int(u1["rating"]), int(u2["rating"])
-        e1 = 1 / (1 + 10 ** ((r2 - r1) / 400))
-        e2 = 1 - e1
-        if winner_id is None:
-            s1 = s2 = 0.5
-        else:
-            s1, s2 = (1.0, 0.0) if winner_id == uid1 else (0.0, 1.0)
-        k = 32
-        n1 = max(100, round(r1 + k * (s1 - e1)))
-        n2 = max(100, round(r2 + k * (s2 - e2)))
-        for row, uid, new_rating, score in ((u1, uid1, n1, s1), (u2, uid2, n2, s2)):
+
+        # Overall rating remains as the all-modes career rating.
+        gr1, gr2 = int(u1["rating"]), int(u2["rating"])
+        gn1, gn2, s1, s2 = _elo_pair(gr1, gr2, winner_id, uid1, uid2)
+        for row, uid, new_rating, score in ((u1, uid1, gn1, s1), (u2, uid2, gn2, s2)):
             wins = row["wins"] + (1 if score == 1 else 0)
             losses = row["losses"] + (1 if score == 0 else 0)
             streak = row["streak"] + 1 if score == 1 else (0 if score == 0 else row["streak"])
@@ -575,6 +708,24 @@ def update_ratings(match: Match, winner_id: int | None) -> None:
                 "UPDATE users SET rating=?, wins=?, losses=?, matches=matches+1, streak=?, best_streak=?, last_seen=? WHERE id=?",
                 (new_rating, wins, losses, streak, best, utc_now(), uid),
             )
+
+        # Each ranked board size gets an independent ladder/rating.
+        for uid in (uid1, uid2):
+            con.execute("INSERT OR IGNORE INTO mode_ratings(user_id,mode) VALUES(?,?)", (uid, mode))
+        m1 = con.execute("SELECT * FROM mode_ratings WHERE user_id=? AND mode=?", (uid1, mode)).fetchone()
+        m2 = con.execute("SELECT * FROM mode_ratings WHERE user_id=? AND mode=?", (uid2, mode)).fetchone()
+        mr1, mr2 = int(m1["rating"]), int(m2["rating"])
+        mn1, mn2, _, _ = _elo_pair(mr1, mr2, winner_id, uid1, uid2)
+        for row, uid, new_rating, score in ((m1, uid1, mn1, s1), (m2, uid2, mn2, s2)):
+            wins = row["wins"] + (1 if score == 1 else 0)
+            losses = row["losses"] + (1 if score == 0 else 0)
+            streak = row["streak"] + 1 if score == 1 else (0 if score == 0 else row["streak"])
+            best = max(row["best_streak"], streak)
+            con.execute(
+                "UPDATE mode_ratings SET rating=?, wins=?, losses=?, matches=matches+1, streak=?, best_streak=? WHERE user_id=? AND mode=?",
+                (new_rating, wins, losses, streak, best, uid, mode),
+            )
+
         duration_ms = max(0, int((time.monotonic() - match.started_at) * 1000))
         con.execute(
             """
@@ -582,10 +733,10 @@ def update_ratings(match: Match, winner_id: int | None) -> None:
             p1_rating_before,p1_rating_after,p2_rating_before,p2_rating_after,played_at)
             VALUES(?,?,?,?,?,?,?,?,?,?,?,?)
             """,
-            (match.id, uid1, uid2, winner_id, match.reason, match.difficulty, duration_ms, r1, n1, r2, n2, utc_now()),
+            (match.id, uid1, uid2, winner_id, match.reason, match.difficulty, duration_ms, mr1, mn1, mr2, mn2, utc_now()),
         )
-    match.result_meta[uid1] = {"ratingBefore": r1, "ratingAfter": n1, "ratingDelta": n1 - r1}
-    match.result_meta[uid2] = {"ratingBefore": r2, "ratingAfter": n2, "ratingDelta": n2 - r2}
+    match.result_meta[uid1] = {"ratingBefore": mr1, "ratingAfter": mn1, "ratingDelta": mn1 - mr1, "overallRatingAfter": gn1}
+    match.result_meta[uid2] = {"ratingBefore": mr2, "ratingAfter": mn2, "ratingDelta": mn2 - mr2, "overallRatingAfter": gn2}
 
 
 async def finalize_match(match: Match, winner_id: int | None, reason: str) -> None:
@@ -600,6 +751,7 @@ async def finalize_match(match: Match, winner_id: int | None, reason: str) -> No
     for uid in match.players:
         if active_match_by_user.get(uid) == match.id:
             active_match_by_user.pop(uid, None)
+        recent_match_by_user[uid] = match.id
     await asyncio.gather(*(send_sync(match, uid, "match_end") for uid in match.players))
 
 
@@ -618,12 +770,16 @@ async def remove_from_queues(uid: int) -> None:
     for q in waiting.values():
         while uid in q:
             q.remove(uid)
+    queued_at.pop(uid, None)
 
 
 async def join_queue(uid: int, difficulty: str) -> None:
     if difficulty not in LEVELS:
         difficulty = "intermediate"
+    touch_live(uid)
+    clean_stale_queues()
     await remove_from_queues(uid)
+    recent_match_by_user.pop(uid, None)
     if uid in active_match_by_user:
         mid = active_match_by_user[uid]
         match = matches.get(mid)
@@ -634,11 +790,13 @@ async def join_queue(uid: int, difficulty: str) -> None:
     opponent = None
     while q:
         cand = q.pop(0)
-        if cand != uid and cand in sockets and cand not in active_match_by_user:
+        queued_at.pop(cand, None)
+        if cand != uid and cand not in active_match_by_user and is_live(cand, QUEUE_TTL_SECONDS):
             opponent = cand
             break
     if opponent is None:
         q.append(uid)
+        queued_at[uid] = time.monotonic()
         await send_json(uid, {"type": "queue_status", "waiting": True, "difficulty": difficulty, "position": len(q)})
     else:
         await send_json(uid, {"type": "queue_status", "waiting": False, "difficulty": difficulty, "position": 0})
@@ -649,7 +807,7 @@ async def join_queue(uid: int, difficulty: str) -> None:
 async def disconnect_forfeit(uid: int, match_id: str) -> None:
     try:
         await asyncio.sleep(30)
-        if uid in sockets:
+        if is_live(uid, 28.0):
             return
         match = matches.get(match_id)
         if not match or match.ended or active_match_by_user.get(uid) != match_id:
@@ -658,6 +816,104 @@ async def disconnect_forfeit(uid: int, match_id: str) -> None:
         await finalize_match(match, winner, "disconnect_forfeit")
     except asyncio.CancelledError:
         pass
+
+
+async def arena_state(uid: int) -> dict[str, Any]:
+    touch_live(uid)
+    mid = active_match_by_user.get(uid)
+    if mid:
+        match = matches.get(mid)
+        if match and not match.ended:
+            oid = other_user(match, uid)
+            # HTTP polling also counts as a live realtime connection.
+            if not is_live(oid, 30.0):
+                await finalize_match(match, uid, "disconnect_forfeit")
+                return {"type": "match_end", "match": match_payload(match, uid), "transport": "polling"}
+            return {"type": "match_sync", "match": match_payload(match, uid), "transport": "polling"}
+    recent = recent_match_by_user.get(uid)
+    if recent:
+        match = matches.get(recent)
+        if match and match.ended and uid in match.players:
+            return {"type": "match_end", "match": match_payload(match, uid), "transport": "polling"}
+    clean_stale_queues()
+    difficulty = queue_for(uid)
+    if difficulty:
+        queued_at[uid] = time.monotonic()
+        position = waiting[difficulty].index(uid) + 1 if uid in waiting[difficulty] else 1
+        return {"type": "queue_status", "waiting": True, "difficulty": difficulty, "position": position, "transport": "polling"}
+    return {"type": "idle", "transport": "polling"}
+
+
+class QueuePayload(BaseModel):
+    difficulty: str = "intermediate"
+
+
+class ArenaActionPayload(BaseModel):
+    matchId: str
+    action: str
+    index: int
+
+
+class ArenaRematchPayload(BaseModel):
+    matchId: str
+
+
+@app.post("/api/arena/queue")
+async def http_queue_join(body: QueuePayload, user: sqlite3.Row = Depends(auth_user)) -> dict[str, Any]:
+    uid = int(user["id"])
+    async with state_lock:
+        await join_queue(uid, body.difficulty)
+        return await arena_state(uid)
+
+
+@app.post("/api/arena/queue/leave")
+async def http_queue_leave(user: sqlite3.Row = Depends(auth_user)) -> dict[str, Any]:
+    uid = int(user["id"])
+    touch_live(uid)
+    async with state_lock:
+        await remove_from_queues(uid)
+    return {"ok": True}
+
+
+@app.get("/api/arena/poll")
+async def http_arena_poll(user: sqlite3.Row = Depends(auth_user)) -> dict[str, Any]:
+    uid = int(user["id"])
+    async with state_lock:
+        return await arena_state(uid)
+
+
+@app.post("/api/arena/action")
+async def http_arena_action(body: ArenaActionPayload, user: sqlite3.Row = Depends(auth_user)) -> dict[str, Any]:
+    uid = int(user["id"])
+    touch_live(uid)
+    async with state_lock:
+        match = matches.get(body.matchId)
+        if not match or match.ended or uid not in match.states:
+            raise HTTPException(status_code=409, detail="Ranked match is no longer active")
+        if body.action not in {"reveal", "flag", "chord"}:
+            raise HTTPException(status_code=400, detail="Unknown action")
+        process_action(match, match.states[uid], body.action, int(body.index))
+        await sync_both(match)
+        await maybe_finish(match, uid)
+        event = "match_end" if match.ended else "match_sync"
+        return {"type": event, "match": match_payload(match, uid), "transport": "polling"}
+
+
+@app.post("/api/arena/rematch")
+async def http_arena_rematch(body: ArenaRematchPayload, user: sqlite3.Row = Depends(auth_user)) -> dict[str, Any]:
+    uid = int(user["id"])
+    touch_live(uid)
+    async with state_lock:
+        match = matches.get(body.matchId)
+        if not match or not match.ended or uid not in match.players:
+            raise HTTPException(status_code=409, detail="Rematch is not available")
+        match.rematch_requests.add(uid)
+        oid = other_user(match, uid)
+        await send_json(oid, {"type": "rematch_status", "requestedBy": uid})
+        if len(match.rematch_requests) == 2 and is_live(match.players[0], QUEUE_TTL_SECONDS) and is_live(match.players[1], QUEUE_TTL_SECONDS):
+            new_match = await create_match(match.players[0], match.players[1], match.difficulty, "match_found")
+            return {"type": "match_found", "match": match_payload(new_match, uid), "transport": "polling"}
+        return {"type": "rematch_status", "waiting": True, "transport": "polling"}
 
 
 @app.websocket("/ws/arena")
@@ -674,6 +930,7 @@ async def arena_socket(ws: WebSocket) -> None:
         await ws.close(code=4401)
         return
     await ws.accept()
+    touch_live(uid)
     old = sockets.get(uid)
     sockets[uid] = ws
     if old and old is not ws:
@@ -693,6 +950,7 @@ async def arena_socket(ws: WebSocket) -> None:
     try:
         while True:
             msg = await ws.receive_json()
+            touch_live(uid)
             mtype = msg.get("type")
             async with state_lock:
                 if mtype == "queue_join":
@@ -736,11 +994,10 @@ async def arena_socket(ws: WebSocket) -> None:
     except WebSocketDisconnect:
         pass
     except Exception:
-        pass
+        logger.exception("Arena websocket failed for user %s", uid)
     finally:
         if sockets.get(uid) is ws:
             sockets.pop(uid, None)
-            await remove_from_queues(uid)
             mid = active_match_by_user.get(uid)
             match = matches.get(mid) if mid else None
             if match and not match.ended:
@@ -752,4 +1009,4 @@ async def arena_socket(ws: WebSocket) -> None:
 
 if __name__ == "__main__":
     init_db()
-    uvicorn.run("server:app", host=os.environ.get("HOST", "127.0.0.1"), port=int(os.environ.get("PORT", "8000")), reload=False)
+    uvicorn.run("server:app", host=os.environ.get("HOST", "0.0.0.0"), port=int(os.environ.get("PORT", "8000")), reload=False)

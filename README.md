@@ -1,4 +1,4 @@
-# MineNova Infinity — Online Arena Edition
+# MineNova Infinity — Online Arena Edition 3.1
 
 MineNova is a polished Minesweeper game with classic solo play, guided training, local co-op, and real server-backed ranked PvP.
 
@@ -20,14 +20,18 @@ MineNova is a polished Minesweeper game with classic solo play, guided training,
 - Each player has 2 lives; hitting a mine costs a life and 75 score.
 - First player to clear the safe field wins. Running out of lives also loses the match.
 - Live opponent progress, lives, score, connection status, emotes, and result are synchronized over WebSockets.
+- If WebSockets are blocked or unstable, the client automatically falls back to authenticated HTTP synchronization for queueing, gameplay, results, and rematches.
+- A heartbeat/reconnect system keeps realtime sessions alive and the UI shows the active transport.
 - Disconnects get a 30-second reconnect grace period before a forfeit.
 - Players can request a rematch after the result.
 
-### Ranking + leaderboard
+### Ranking + leaderboards
 - Elo-style rating starts at 1000.
 - Tiers: Bronze, Silver, Gold, Platinum, Diamond, Nova.
-- Global leaderboard shows rating, record, and match count.
-- Match history stores opponent, result, difficulty, duration, reason, and rating change.
+- Overall career rating remains available.
+- Beginner, Intermediate, and Expert now each have an independent ranked rating, record, streak, and leaderboard.
+- The leaderboard modal has Overall / Beginner / Intermediate / Expert tabs.
+- Match history stores opponent, result, difficulty, duration, reason, and that mode's rating change.
 
 ### Improved local co-op controls
 Player 1:
@@ -108,7 +112,7 @@ The server creates `minenova.db` automatically next to `server.py`.
 
 ## Play on two devices on the same network
 
-By default `server.py` listens on `127.0.0.1`. To expose it to your LAN:
+`server.py` now listens on `0.0.0.0` by default, so it is ready for Docker/Railway and LAN testing. To set it explicitly:
 
 macOS / Linux:
 
@@ -164,10 +168,15 @@ Important production notes:
 - `POST /api/login` — login
 - `GET /api/me` — profile + cloud progress
 - `POST /api/progress` — save cloud progress
-- `GET /api/leaderboard` — global ranking
+- `GET /api/leaderboard?mode=overall|beginner|intermediate|expert` — overall + per-board rankings
 - `GET /api/matches` — signed-in player's match history
 - `GET /api/status` — server/queue activity
-- `WS /ws/arena?token=...` — queue, live actions, reconnect, emotes, rematches
+- `POST /api/arena/queue` — HTTP fallback queue join
+- `POST /api/arena/queue/leave` — HTTP fallback queue leave
+- `GET /api/arena/poll` — HTTP fallback match/queue sync
+- `POST /api/arena/action` — HTTP fallback reveal/flag/chord
+- `POST /api/arena/rematch` — HTTP fallback rematch request
+- `WS /ws/arena?token=...` — preferred realtime queue/actions/reconnect/emotes/rematches
 
 ## Ranked fairness model
 
