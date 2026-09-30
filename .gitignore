@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+minenova.db
+minenova.db-shm
+minenova.db-wal
+.env

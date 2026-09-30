@@ -1,0 +1,3 @@
+fastapi>=0.128,<1
+uvicorn>=0.48,<1
+PyJWT>=2.13,<3
