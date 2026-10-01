@@ -50,7 +50,7 @@ async def lifespan(_: FastAPI):
     yield
 
 
-app = FastAPI(title="MineNova Server", version="4.0", lifespan=lifespan)
+app = FastAPI(title="MineNova Server", version="5.0", lifespan=lifespan)
 
 
 def db() -> sqlite3.Connection:
@@ -218,6 +218,50 @@ def public_user(row: sqlite3.Row, include_progress: bool = False) -> dict[str, A
     return out
 
 
+def public_profile(row: sqlite3.Row) -> dict[str, Any]:
+    try:
+        progress = json.loads(row["progress_json"] or "{}")
+        if not isinstance(progress, dict):
+            progress = {}
+    except Exception:
+        progress = {}
+    profile = progress.get("profile") if isinstance(progress.get("profile"), dict) else {}
+    cosmetics = progress.get("cosmetics") if isinstance(progress.get("cosmetics"), dict) else {}
+    unlocked = cosmetics.get("unlockedFlags") if isinstance(cosmetics.get("unlockedFlags"), list) else ["survey-red"]
+    bot_record = progress.get("botRecord") if isinstance(progress.get("botRecord"), dict) else {}
+    bot_wins = 0
+    for value in bot_record.values():
+        if isinstance(value, dict):
+            try:
+                bot_wins += max(0, int(value.get("wins", 0)))
+            except (TypeError, ValueError):
+                pass
+    bio = str(profile.get("bio", ""))[:100]
+    title = str(profile.get("title", "Fieldhand"))[:40]
+    equipped = str(cosmetics.get("equippedFlag", "survey-red"))[:60]
+    def safe_int(value: Any) -> int:
+        try:
+            return max(0, int(value or 0))
+        except (TypeError, ValueError):
+            return 0
+
+    return {
+        **public_user(row),
+        "createdAt": row["created_at"],
+        "modeRatings": get_mode_ratings(int(row["id"])),
+        "profile": {"bio": bio, "title": title},
+        "cosmetics": {"equippedFlag": equipped, "unlockedCount": max(1, len(set(map(str, unlocked))))},
+        "solo": {
+            "xp": safe_int(progress.get("xp", 0)),
+            "totalWins": safe_int(progress.get("totalWins", 0)),
+            "totalChords": safe_int(progress.get("totalChords", 0)),
+            "infinityBest": safe_int(progress.get("infinityBest", 0)),
+            "botWins": bot_wins,
+            "flags": max(1, len(set(map(str, unlocked)))),
+        },
+    }
+
+
 def public_user_for_mode(row: sqlite3.Row, mode: str) -> dict[str, Any]:
     out = public_user(row)
     ranked = get_mode_ratings(int(row["id"])).get(mode, {})
@@ -298,6 +342,18 @@ async def me(user: sqlite3.Row = Depends(auth_user)) -> dict[str, Any]:
     fresh = get_user_by_id(user["id"])
     assert fresh is not None
     return {"user": public_user(fresh, True)}
+
+
+@app.get("/api/profile/{username}")
+async def profile(username: str) -> dict[str, Any]:
+    username = username.strip()
+    if not USERNAME_RE.fullmatch(username):
+        raise HTTPException(status_code=400, detail="Invalid username")
+    with db() as con:
+        row = con.execute("SELECT * FROM users WHERE username=? COLLATE NOCASE", (username,)).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Player not found")
+    return {"profile": public_profile(row)}
 
 
 @app.post("/api/progress")

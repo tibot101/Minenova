@@ -1,57 +1,77 @@
-# MineNova 4.0 — Field Desk
+# MineNova 5.0 — Mine Room
 
-MineNova 4.0 is a full-stack Minesweeper game with solo play, Infinity runs, bot races, local co-op, account-scoped progression, and real server-backed ranked PvP.
+MineNova is a full-stack Minesweeper game with classic solo play, Infinity runs, bot races, local co-op, cloud accounts, public player profiles, cosmetic flag collecting, and server-backed ranked PvP.
 
-## What changed in 4.0
+## What is new in 5.0
 
-### New visual direction
-- Reworked the site into a darker field-desk / minefield style instead of a neon dashboard.
-- Added a permanent left navigation rail for Play, Infinity, Bot Arena, Online PvP, Leaderboards, Tutorial, and Settings.
-- Redesigned the board frame, cells, panels, buttons, stats, flags, overlays, and background to feel more like a deliberately designed game UI.
-- Reduced decorative gradients/glass effects and made the visual hierarchy flatter and more tactile.
+### Mine Room redesign
+- New Mine Room home hub instead of dropping straight into a dashboard.
+- Handcrafted workbench / clubhouse visual direction with a physical-looking board frame.
+- Classic beveled Minesweeper tiles with clearer revealed squares and number colors.
+- Left navigation for Mine Room, Play, Infinity, Bot Arena, Online PvP, Flag Locker, Profiles, Leaderboards, Tutorial, and Settings.
+- New classic face/replay button in the field console.
+- Cleaner typography, less glass/neon styling, and fewer decorative panels.
 
-### Power system removed
-- Safe Hint, Pulse Scan, Shield, and the old power panel are gone from normal play.
-- Core Minesweeper mechanics are now the focus: revealing, flagging, deduction, chording, speed, seeds, and modes.
+### Flag Locker and victory drops
+There are **36 collectible flags** across six rarities:
+- Common
+- Uncommon
+- Rare
+- Epic
+- Legendary
+- Mythic
 
-### Infinity Mode
-- Starts with a small field.
-- Every clear advances to a larger and/or denser round.
-- One loss ends the run.
-- Tracks best round and total Infinity clears.
-- Infinity progress is included in account cloud progress.
+Eligible victories award a new flag until the collection is complete. Rewards come from solo clears, Infinity rounds, Bot Arena wins, local co-op clears, and ranked wins. Once the collection is complete, wins convert to bonus XP instead.
+
+Each flag has its own colors, shape, marking, and rarity. The equipped flag appears on the game board and on the public profile.
+
+### Public player profiles
+- Player profile card with username, title, equipped flag, joined date, ranked record, solo wins, Infinity best, Bot Arena wins, and collection size.
+- Beginner / Intermediate / Expert ranked ratings shown on the profile.
+- Editable public field note for the current account.
+- Unlockable profile titles based on actual progress.
+- Leaderboard names open their player profile.
+
+### Quality-of-life pass
+- Per-account board zoom with `− / 100% / +` controls.
+- Focus mode for a distraction-free board.
+- Face button instantly replays the current seed.
+- Copy-seed button.
+- `N` opens New Field.
+- `R` replays the current field.
+- `H` returns to the Mine Room.
+- `L` opens the Flag Locker.
+- `Esc` exits focus mode.
+- Existing keyboard reveal/flag/chord controls remain.
+- Home screen shows quick play, daily field, account stats, current flag, recent drops, and server status.
+
+### Bugs fixed in 5.0
+- Added the missing automatic authentication initializer. Stored login sessions now actually restore the account, cloud progress, and realtime connection on page load.
+- Fixed tutorial progress dots using the wrong CSS class.
+- Kept account progress isolated when switching users.
+- Public profile data is sanitized on the server and never exposes password hashes or private session data.
+- Ranked matchmaking, HTTP fallback, mode leaderboards, and the existing SQLite schema remain compatible.
+
+## Existing game modes
+
+### Solo
+- Beginner, Intermediate, Expert, Master, and Custom boards.
+- Classic, Sprint, Zen, seeded games, and Daily Field.
+- First-click protection and chording.
+
+### Infinity
+Clear a board to move into a larger/denser round. One loss ends the run. Best round and total clears are saved per account.
 
 ### Bot Arena
-Race your own field against a bot on an identical board.
+Race an identical board against:
+- Rookie
+- Club Player
+- Expert
+- Nightmare
 
-Bot levels:
-- **Rookie** — slow and guess-heavy.
-- **Club Player** — uses basic forced moves and moderate risk selection.
-- **Expert** — faster clue solving and better risk selection.
-- **Nightmare** — very fast and rarely makes intentionally poor choices.
+The bot uses visible clues, forced moves, and risk estimates instead of simply revealing every hidden mine location.
 
-The bot works from revealed clues/flags and risk estimates rather than simply reading the hidden answer map for every move.
-
-### Account-scoped progress fix
-Solo progress no longer follows you when you switch accounts.
-
-Each signed-in account now gets its own browser cache and its own server-side cloud progress for:
-- XP / level
-- solo wins
-- chord totals
-- personal best times
-- daily mission progress
-- Infinity best / clears
-- Bot Arena records
-- theme / flag style / gameplay preferences
-
-Guest progress is stored separately too.
-
-Existing ranked rating, ranked wins/losses, mode ratings, and match history remain server-side as before.
-
-The account screen also has **Reset solo progress** for cleaning up an account that may already have inherited old shared-browser progress from pre-4.0 versions. It does not reset ranked ratings/history.
-
-### Local co-op control cleanup
+### Local co-op
 Player 1:
 - `W A S D` — move
 - `Space` — reveal
@@ -64,26 +84,30 @@ Player 2:
 - `M` — flag
 - `N` — chord
 
-Shared:
-- `Tab` — switch mouse/touch ownership
-- click — reveal / chord
-- right-click / touch long-press — mark
+`Tab` switches mouse ownership.
 
-### Online ranked remains server-authoritative
-- Real account login and JWT sessions
-- Beginner / Intermediate / Expert matchmaking queues
-- Separate boards generated from the same server-owned hidden field
-- Server validates reveal, flag, and chord actions
-- WebSocket realtime with authenticated HTTP fallback
-- reconnect grace period
-- rematches and quick emotes
-- Overall + Beginner + Intermediate + Expert leaderboards
-- persistent match history and ratings in SQLite
+### Ranked online
+- Real accounts and JWT sessions.
+- Beginner / Intermediate / Expert queues.
+- Server-authoritative minefields and actions.
+- WebSocket realtime with authenticated HTTP fallback.
+- Reconnect grace period, rematches, emotes, and match history.
+- Overall + three independent mode leaderboards.
 
-### Update/cache fix
-The server now serves `index.html` with no-cache headers, so deployments are less likely to leave players stuck on an older client after Railway updates.
+## Account-scoped cloud progress
 
----
+Each account has separate:
+- XP and level
+- solo wins and best times
+- chords and daily drill
+- Infinity progress
+- Bot Arena records
+- settings and board zoom
+- public profile note/title
+- unlocked flags and equipped flag
+- reward history
+
+Guest progress is separate from every signed-in account.
 
 ## Run locally
 
@@ -99,43 +123,45 @@ Start MineNova:
 python server.py
 ```
 
-Then open:
+Open:
 
 ```text
 http://127.0.0.1:8000
 ```
 
-The server creates `minenova.db` automatically if no persistent database path is configured.
+## Railway update
 
-## Railway
+Keep your existing Railway service, `/data` volume, database, domain, and `MINENOVA_SECRET`.
 
-Keep the same Railway project, `/data` volume, and `MINENOVA_SECRET` when upgrading an existing deployment. Do **not** wipe the volume.
+Replace the old project files in the same GitHub repository with the 5.0 files and commit them. Railway should redeploy automatically.
 
-Upload/commit the new project files to the same connected GitHub repository. Railway should redeploy automatically. After deployment, check:
+After deployment, open:
 
 ```text
 https://YOUR-SITE/health
 ```
 
-MineNova 4.0 returns a response containing:
+You should see a response containing:
 
 ```json
-{"ok":true,"version":"4.0"}
+{"ok":true,"version":"5.0"}
 ```
 
-See `DEPLOY_RAILWAY.md` for the full deployment setup.
+Do **not** wipe the Railway volume when updating. Existing accounts, ratings, match history, and progress are migrated through the existing `progress_json` field and remain compatible.
+
+See `DEPLOY_RAILWAY.md` for the hosting setup.
 
 ## Main files
 
-- `index.html` — complete game client and UI
-- `server.py` — FastAPI API, accounts, ranked matchmaking, WebSockets, SQLite
+- `index.html` — full game client/UI
+- `server.py` — FastAPI API, accounts, public profiles, matchmaking, WebSockets, SQLite
 - `requirements.txt` — Python dependencies
-- `Dockerfile` — hosted deployment image
+- `Dockerfile` — deployment image
 - `start.sh` / `start.bat` — local launchers
 
 ## Production notes
 
 - Keep `MINENOVA_SECRET` private.
-- Keep the SQLite database on persistent storage (`/data` on the recommended Railway setup).
-- Keep MineNova at one server replica for now because live matchmaking state is in memory.
+- Keep SQLite on persistent storage (`/data` on Railway).
+- Keep one server replica for now because active matchmaking state is held in memory.
 - Do not commit `minenova.db` or `.env`.
