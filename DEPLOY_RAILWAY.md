@@ -1,4 +1,4 @@
-# Deploy MineNova Infinity on Railway
+# Deploy MineNova 4.0 on Railway
 
 MineNova serves both the website and the FastAPI/WebSocket backend from one service.
 
@@ -52,7 +52,7 @@ Open the generated HTTPS URL. The game automatically switches its WebSocket conn
 
 
 ## Realtime reliability
-MineNova prefers secure WebSockets (`wss://`) for ranked play. Version 3.1 also includes an authenticated HTTP-sync fallback. If a browser/network blocks WebSockets, players can still queue, match, play, finish, and rematch. The multiplayer window shows which transport is active.
+MineNova prefers secure WebSockets (`wss://`) for ranked play. MineNova 4.0 includes an authenticated HTTP-sync fallback. If a browser/network blocks WebSockets, players can still queue, match, play, finish, and rematch. The multiplayer window shows which transport is active.
 
 ## 7. Test real matchmaking
 - Open the public URL in two separate browser profiles/devices.
@@ -68,3 +68,14 @@ Push changes to the connected GitHub repository. Railway can redeploy from the n
 
 ## Custom domain
 After the Railway URL works, add a custom domain from Railway's Networking settings and follow the DNS records Railway gives you. TLS/HTTPS is handled by Railway.
+
+
+## Updating from an older MineNova version
+- Keep the existing Railway service.
+- Keep the existing `minenova-volume` mounted at `/data`.
+- Keep the same `MINENOVA_SECRET`.
+- Replace/commit the updated source files in the same GitHub repository.
+- Let Railway deploy the newest commit.
+- Do **not** wipe the volume; the existing accounts, ratings, and match history are compatible.
+- Confirm `/health` reports `"version":"4.0"`.
+- MineNova 4.0 sends no-cache headers for the main HTML, reducing stale-client problems after future updates.

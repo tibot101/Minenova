@@ -50,7 +50,7 @@ async def lifespan(_: FastAPI):
     yield
 
 
-app = FastAPI(title="MineNova Infinity Server", version="3.1", lifespan=lifespan)
+app = FastAPI(title="MineNova Server", version="4.0", lifespan=lifespan)
 
 
 def db() -> sqlite3.Connection:
@@ -252,7 +252,7 @@ class ProgressPayload(BaseModel):
 
 @app.get("/")
 async def index() -> FileResponse:
-    return FileResponse(ROOT / "index.html")
+    return FileResponse(ROOT / "index.html", headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
 
 
 @app.get("/health")

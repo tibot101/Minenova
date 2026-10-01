@@ -1,189 +1,141 @@
-# MineNova Infinity — Online Arena Edition 3.1
+# MineNova 4.0 — Field Desk
 
-MineNova is a polished Minesweeper game with classic solo play, guided training, local co-op, and real server-backed ranked PvP.
+MineNova 4.0 is a full-stack Minesweeper game with solo play, Infinity runs, bot races, local co-op, account-scoped progression, and real server-backed ranked PvP.
 
-## What changed in this version
+## What changed in 4.0
 
-### Real accounts + cloud progress
-- Create an account with a username and password.
-- Passwords are stored as salted PBKDF2-SHA256 hashes, never as plaintext.
-- Login sessions use signed JWT access tokens.
-- Solo progression/settings can sync to the account: XP, wins, chord totals, personal bests, theme, flag style, and accessibility settings.
-- Profiles show rating, tier, wins, losses, streak, and match count.
+### New visual direction
+- Reworked the site into a darker field-desk / minefield style instead of a neon dashboard.
+- Added a permanent left navigation rail for Play, Infinity, Bot Arena, Online PvP, Leaderboards, Tutorial, and Settings.
+- Redesigned the board frame, cells, panels, buttons, stats, flags, overlays, and background to feel more like a deliberately designed game UI.
+- Reduced decorative gradients/glass effects and made the visual hierarchy flatter and more tactile.
 
-### Real online ranked PvP
-- Two signed-in players join the same matchmaking queue.
-- The server pairs players by board difficulty.
-- Both players receive their own board based on the exact same hidden server field.
-- The browser does **not** receive the hidden mine layout in ranked play.
-- Reveals, flags, and chords are validated by the server.
-- Each player has 2 lives; hitting a mine costs a life and 75 score.
-- First player to clear the safe field wins. Running out of lives also loses the match.
-- Live opponent progress, lives, score, connection status, emotes, and result are synchronized over WebSockets.
-- If WebSockets are blocked or unstable, the client automatically falls back to authenticated HTTP synchronization for queueing, gameplay, results, and rematches.
-- A heartbeat/reconnect system keeps realtime sessions alive and the UI shows the active transport.
-- Disconnects get a 30-second reconnect grace period before a forfeit.
-- Players can request a rematch after the result.
+### Power system removed
+- Safe Hint, Pulse Scan, Shield, and the old power panel are gone from normal play.
+- Core Minesweeper mechanics are now the focus: revealing, flagging, deduction, chording, speed, seeds, and modes.
 
-### Ranking + leaderboards
-- Elo-style rating starts at 1000.
-- Tiers: Bronze, Silver, Gold, Platinum, Diamond, Nova.
-- Overall career rating remains available.
-- Beginner, Intermediate, and Expert now each have an independent ranked rating, record, streak, and leaderboard.
-- The leaderboard modal has Overall / Beginner / Intermediate / Expert tabs.
-- Match history stores opponent, result, difficulty, duration, reason, and that mode's rating change.
+### Infinity Mode
+- Starts with a small field.
+- Every clear advances to a larger and/or denser round.
+- One loss ends the run.
+- Tracks best round and total Infinity clears.
+- Infinity progress is included in account cloud progress.
 
-### Improved local co-op controls
+### Bot Arena
+Race your own field against a bot on an identical board.
+
+Bot levels:
+- **Rookie** — slow and guess-heavy.
+- **Club Player** — uses basic forced moves and moderate risk selection.
+- **Expert** — faster clue solving and better risk selection.
+- **Nightmare** — very fast and rarely makes intentionally poor choices.
+
+The bot works from revealed clues/flags and risk estimates rather than simply reading the hidden answer map for every move.
+
+### Account-scoped progress fix
+Solo progress no longer follows you when you switch accounts.
+
+Each signed-in account now gets its own browser cache and its own server-side cloud progress for:
+- XP / level
+- solo wins
+- chord totals
+- personal best times
+- daily mission progress
+- Infinity best / clears
+- Bot Arena records
+- theme / flag style / gameplay preferences
+
+Guest progress is stored separately too.
+
+Existing ranked rating, ranked wins/losses, mode ratings, and match history remain server-side as before.
+
+The account screen also has **Reset solo progress** for cleaning up an account that may already have inherited old shared-browser progress from pre-4.0 versions. It does not reset ranked ratings/history.
+
+### Local co-op control cleanup
 Player 1:
 - `W A S D` — move
 - `Space` — reveal
-- `E` — flag
-- `Q` — chord
+- `F` — flag
+- `G` — chord
 
 Player 2:
 - Arrow keys — move
 - `Enter` — reveal
-- `Right Shift` — flag
-- `Backslash` — chord
+- `M` — flag
+- `N` — chord
 
 Shared:
-- `Tab` — switch which player owns mouse/touch actions
-- Mouse click — reveal / chord
-- Right-click — mark
-- Long-press on touch — mark
+- `Tab` — switch mouse/touch ownership
+- click — reveal / chord
+- right-click / touch long-press — mark
 
-### Everything from the earlier edition remains
-- Beginner / Intermediate / Expert / Master solo boards
-- Classic, Sprint, and Zen
-- Chording with click, Shift-click, double-click, middle-click, and keyboard
-- Guided interactive tutorial
-- Safe Hint, Pulse Scan, Undo Mark, Nova Shield
-- XP, missions, statistics, seed replay, daily field
-- Multiple themes and flag designs
-- Responsive desktop/mobile layout
-- Generated sound effects, haptics, particles, confetti
-- Local solo play still works if the server is unavailable
+### Online ranked remains server-authoritative
+- Real account login and JWT sessions
+- Beginner / Intermediate / Expert matchmaking queues
+- Separate boards generated from the same server-owned hidden field
+- Server validates reveal, flag, and chord actions
+- WebSocket realtime with authenticated HTTP fallback
+- reconnect grace period
+- rematches and quick emotes
+- Overall + Beginner + Intermediate + Expert leaderboards
+- persistent match history and ratings in SQLite
+
+### Update/cache fix
+The server now serves `index.html` with no-cache headers, so deployments are less likely to leave players stuck on an older client after Railway updates.
 
 ---
 
-## Run it locally
+## Run locally
 
-The online features require the server; do **not** just double-click `index.html` if you want accounts or matchmaking.
-
-### 1. Install Python dependencies
+Install dependencies:
 
 ```bash
 python -m pip install -r requirements.txt
 ```
 
-### 2. Start MineNova
-
-Windows:
-
-```text
-start.bat
-```
-
-macOS / Linux:
-
-```bash
-./start.sh
-```
-
-Or directly:
+Start MineNova:
 
 ```bash
 python server.py
 ```
 
-### 3. Open it
-
-Visit:
+Then open:
 
 ```text
 http://127.0.0.1:8000
 ```
 
-Open that URL in two separate browser profiles/windows, create two accounts, and queue the same difficulty to test real matchmaking.
+The server creates `minenova.db` automatically if no persistent database path is configured.
 
-The server creates `minenova.db` automatically next to `server.py`.
+## Railway
 
----
+Keep the same Railway project, `/data` volume, and `MINENOVA_SECRET` when upgrading an existing deployment. Do **not** wipe the volume.
 
-## Play on two devices on the same network
-
-`server.py` now listens on `0.0.0.0` by default, so it is ready for Docker/Railway and LAN testing. To set it explicitly:
-
-macOS / Linux:
-
-```bash
-HOST=0.0.0.0 python server.py
-```
-
-Windows PowerShell:
-
-```powershell
-$env:HOST="0.0.0.0"
-python server.py
-```
-
-Then visit `http://YOUR-COMPUTER-LAN-IP:8000` from both devices.
-
----
-
-## Put it on the real internet
-
-For actual internet matchmaking between people in different homes, deploy this folder to a Python host that supports WebSockets (for example a VPS or a WebSocket-capable Python app host).
-
-Production environment variables:
+Upload/commit the new project files to the same connected GitHub repository. Railway should redeploy automatically. After deployment, check:
 
 ```text
-MINENOVA_SECRET=<a long random secret>
-MINENOVA_DB=/persistent/storage/minenova.db
-HOST=0.0.0.0
-PORT=<port supplied by your host>
+https://YOUR-SITE/health
 ```
 
-Important production notes:
-- Use HTTPS/WSS through your hosting provider or reverse proxy.
-- Set a strong `MINENOVA_SECRET`; do not use the built-in development fallback publicly.
-- Put `minenova.db` on persistent storage.
-- Back up the database if accounts matter.
-- The current matchmaking process is in-memory, so a single server process is recommended. A multi-instance deployment would need Redis or another shared queue/state layer.
+MineNova 4.0 returns a response containing:
 
----
+```json
+{"ok":true,"version":"4.0"}
+```
 
-## Project files
+See `DEPLOY_RAILWAY.md` for the full deployment setup.
 
-- `index.html` — complete game client/UI
-- `server.py` — FastAPI HTTP API + WebSocket matchmaking + SQLite persistence
+## Main files
+
+- `index.html` — complete game client and UI
+- `server.py` — FastAPI API, accounts, ranked matchmaking, WebSockets, SQLite
 - `requirements.txt` — Python dependencies
-- `start.sh` — macOS/Linux launcher
-- `start.bat` — Windows launcher
-- `minenova.db` — generated at runtime, not included in the clean package
+- `Dockerfile` — hosted deployment image
+- `start.sh` / `start.bat` — local launchers
 
-## API overview
+## Production notes
 
-- `POST /api/register` — create account
-- `POST /api/login` — login
-- `GET /api/me` — profile + cloud progress
-- `POST /api/progress` — save cloud progress
-- `GET /api/leaderboard?mode=overall|beginner|intermediate|expert` — overall + per-board rankings
-- `GET /api/matches` — signed-in player's match history
-- `GET /api/status` — server/queue activity
-- `POST /api/arena/queue` — HTTP fallback queue join
-- `POST /api/arena/queue/leave` — HTTP fallback queue leave
-- `GET /api/arena/poll` — HTTP fallback match/queue sync
-- `POST /api/arena/action` — HTTP fallback reveal/flag/chord
-- `POST /api/arena/rematch` — HTTP fallback rematch request
-- `WS /ws/arena?token=...` — preferred realtime queue/actions/reconnect/emotes/rematches
-
-## Ranked fairness model
-
-Ranked boards are generated and held by the Python server. The client receives only revealed clue values, its own marks/hits, and aggregate opponent progress. Ranked results and rating updates are therefore decided server-side rather than trusting a browser to claim a win.
-
----
-
-## Easiest hosted deployment
-
-For a ready-to-follow Railway deployment path, see `DEPLOY_RAILWAY.md`. This package also includes a `Dockerfile`, automatic Railway volume detection for `minenova.db`, and `.env.example`.
+- Keep `MINENOVA_SECRET` private.
+- Keep the SQLite database on persistent storage (`/data` on the recommended Railway setup).
+- Keep MineNova at one server replica for now because live matchmaking state is in memory.
+- Do not commit `minenova.db` or `.env`.
