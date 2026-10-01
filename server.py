@@ -50,7 +50,7 @@ async def lifespan(_: FastAPI):
     yield
 
 
-app = FastAPI(title="MineNova Server", version="5.0", lifespan=lifespan)
+app = FastAPI(title="MineNova Server", version="6.0", lifespan=lifespan)
 
 
 def db() -> sqlite3.Connection:
@@ -238,6 +238,7 @@ def public_profile(row: sqlite3.Row) -> dict[str, Any]:
                 pass
     bio = str(profile.get("bio", ""))[:100]
     title = str(profile.get("title", "Fieldhand"))[:40]
+    avatar = str(profile.get("avatar", "mine"))[:40]
     equipped = str(cosmetics.get("equippedFlag", "survey-red"))[:60]
     def safe_int(value: Any) -> int:
         try:
@@ -249,8 +250,13 @@ def public_profile(row: sqlite3.Row) -> dict[str, Any]:
         **public_user(row),
         "createdAt": row["created_at"],
         "modeRatings": get_mode_ratings(int(row["id"])),
-        "profile": {"bio": bio, "title": title},
-        "cosmetics": {"equippedFlag": equipped, "unlockedCount": max(1, len(set(map(str, unlocked))))},
+        "profile": {"bio": bio, "title": title, "avatar": avatar},
+        "cosmetics": {
+            "equippedFlag": equipped,
+            "unlockedCount": max(1, len(set(map(str, unlocked)))),
+            "totalDrops": safe_int(progress.get("rewardWins", 0)),
+            "salvage": safe_int(cosmetics.get("salvage", 0)),
+        },
         "solo": {
             "xp": safe_int(progress.get("xp", 0)),
             "totalWins": safe_int(progress.get("totalWins", 0)),

@@ -1,19 +1,49 @@
-# MineNova 5.0 — Mine Room
+# MineNova 6.0 — Modern Field
 
-MineNova is a full-stack Minesweeper game with classic solo play, Infinity runs, bot races, local co-op, cloud accounts, public player profiles, cosmetic flag collecting, and server-backed ranked PvP.
+MineNova is a full-stack Minesweeper game with solo play, Infinity runs, Bot Arena, local co-op, account-scoped progression, collectible flags, public profiles, and server-backed ranked PvP.
 
-## What is new in 5.0
+Created by **Tibot101**.
 
-### Mine Room redesign
-- New Mine Room home hub instead of dropping straight into a dashboard.
-- Handcrafted workbench / clubhouse visual direction with a physical-looking board frame.
-- Classic beveled Minesweeper tiles with clearer revealed squares and number colors.
-- Left navigation for Mine Room, Play, Infinity, Bot Arena, Online PvP, Flag Locker, Profiles, Leaderboards, Tutorial, and Settings.
-- New classic face/replay button in the field console.
-- Cleaner typography, less glass/neon styling, and fewer decorative panels.
+## What is new in 6.0
 
-### Flag Locker and victory drops
-There are **36 collectible flags** across six rarities:
+### Modern Minesweeper visual refresh
+- Reworked the 5.0 workbench/classic look into a cleaner modern field UI while keeping recognizable Minesweeper tiles and clue colors.
+- Modern dark minefield backdrop, cleaner navigation, softer depth, tighter board chrome, and responsive hover/press/reveal motion.
+- High-contrast clue colors for 1–8.
+- Stable planted flags: unchanged cells are no longer destroyed and rebuilt during timer/online updates.
+- One-shot planting motion only when a flag is actually placed.
+- Modal, screen, board-reveal, button, tutorial-target, and reward animations with `prefers-reduced-motion` support.
+
+### MineNova Academy tutorial
+The tutorial is now an 8-lesson visual course:
+1. Clear safe tiles
+2. Read number clues
+3. Flag known mines
+4. Chord safely
+5. Recognize the 1–2–1 pattern
+6. Mouse and keyboard controls
+7. Game modes
+8. Guided practice
+
+The guided practice runs on a real training board and walks through **reveal → flag → chord**. The controls lesson displays the player's current remapped keys.
+
+### Fully remappable controls
+Settings now contains a keybind editor for:
+- Solo/online movement
+- Reveal, flag, and chord
+- Pause, New Field, replay, home, locker, and focus mode
+- Both local co-op players
+- Mouse-owner swap
+
+Keybinds are saved per account and synced with cloud progress. Mouse/touch controls always remain available.
+
+### Profile pictures
+- Added 12 selectable profile-picture badges.
+- The selected picture appears in the account chip, Mine Room, and public profile.
+- Profile picture, title, and field note are account-scoped and cloud synced.
+
+### Duplicate flag drops
+The Flag Locker still contains 36 flags across:
 - Common
 - Uncommon
 - Rare
@@ -21,46 +51,26 @@ There are **36 collectible flags** across six rarities:
 - Legendary
 - Mythic
 
-Eligible victories award a new flag until the collection is complete. Rewards come from solo clears, Infinity rounds, Bot Arena wins, local co-op clears, and ranked wins. Once the collection is complete, wins convert to bonus XP instead.
+Wins now roll from the **entire** loot table, so duplicates are possible from the beginning. Higher rarities have much lower drop weights, making strong cosmetics genuinely difficult to collect.
 
-Each flag has its own colors, shape, marking, and rarity. The equipped flag appears on the game board and on the public profile.
+The locker tracks copy counts (`×2`, `×3`, etc.). Duplicate drops also give a small salvage bonus, with rarer duplicates worth more salvage.
 
-### Public player profiles
-- Player profile card with username, title, equipped flag, joined date, ranked record, solo wins, Infinity best, Bot Arena wins, and collection size.
-- Beginner / Intermediate / Expert ranked ratings shown on the profile.
-- Editable public field note for the current account.
-- Unlockable profile titles based on actual progress.
-- Leaderboard names open their player profile.
+### Performance and bug fixes
+- Fixed flags appearing to reload/flicker on repeated HUD and online updates.
+- Board rendering now reuses existing cell DOM nodes and only updates cells whose visible state changed.
+- Removed an expensive full sidebar/home rerender from the 120 ms HUD timer.
+- Fixed a local co-op/global-shortcut conflict by routing multiplayer controls before global shortcuts.
+- Settings no longer rebuild the board for unrelated preference changes.
+- Public profiles now expose the selected profile picture safely through the server API.
+- Existing WebSocket + HTTP fallback matchmaking remains compatible.
 
-### Quality-of-life pass
-- Per-account board zoom with `− / 100% / +` controls.
-- Focus mode for a distraction-free board.
-- Face button instantly replays the current seed.
-- Copy-seed button.
-- `N` opens New Field.
-- `R` replays the current field.
-- `H` returns to the Mine Room.
-- `L` opens the Flag Locker.
-- `Esc` exits focus mode.
-- Existing keyboard reveal/flag/chord controls remain.
-- Home screen shows quick play, daily field, account stats, current flag, recent drops, and server status.
+## Game modes
 
-### Bugs fixed in 5.0
-- Added the missing automatic authentication initializer. Stored login sessions now actually restore the account, cloud progress, and realtime connection on page load.
-- Fixed tutorial progress dots using the wrong CSS class.
-- Kept account progress isolated when switching users.
-- Public profile data is sanitized on the server and never exposes password hashes or private session data.
-- Ranked matchmaking, HTTP fallback, mode leaderboards, and the existing SQLite schema remain compatible.
-
-## Existing game modes
-
-### Solo
-- Beginner, Intermediate, Expert, Master, and Custom boards.
-- Classic, Sprint, Zen, seeded games, and Daily Field.
-- First-click protection and chording.
+### Classic / Sprint / Zen
+Beginner, Intermediate, Expert, Master, Custom, seeded boards, and the Daily Field.
 
 ### Infinity
-Clear a board to move into a larger/denser round. One loss ends the run. Best round and total clears are saved per account.
+Clear increasingly difficult boards in one run. One loss ends the run. Best round and total clears are saved per account.
 
 ### Bot Arena
 Race an identical board against:
@@ -69,99 +79,97 @@ Race an identical board against:
 - Expert
 - Nightmare
 
-The bot uses visible clues, forced moves, and risk estimates instead of simply revealing every hidden mine location.
+The bot uses visible clues and risk estimates rather than reading hidden mines directly.
 
 ### Local co-op
+All keyboard controls are remappable in Settings. Defaults:
+
 Player 1:
-- `W A S D` — move
-- `Space` — reveal
-- `F` — flag
-- `G` — chord
+- `W A S D` move
+- `Space` reveal
+- `F` flag
+- `G` chord
 
 Player 2:
-- Arrow keys — move
-- `Enter` — reveal
-- `M` — flag
-- `N` — chord
+- Arrow keys move
+- `Enter` reveal
+- `Right Shift` flag
+- `\\` chord
 
-`Tab` switches mouse ownership.
+`Tab` swaps mouse ownership.
 
 ### Ranked online
-- Real accounts and JWT sessions.
-- Beginner / Intermediate / Expert queues.
-- Server-authoritative minefields and actions.
-- WebSocket realtime with authenticated HTTP fallback.
-- Reconnect grace period, rematches, emotes, and match history.
-- Overall + three independent mode leaderboards.
+- Account login and cloud progress
+- Beginner / Intermediate / Expert queues
+- Overall + three independent ranked leaderboards
+- Server-authoritative boards/actions
+- WebSocket realtime with authenticated HTTP-sync fallback
+- Reconnect grace, emotes, rematches, and match history
 
-## Account-scoped cloud progress
+## Account-scoped progress
 
-Each account has separate:
+Each signed-in account has its own:
 - XP and level
-- solo wins and best times
-- chords and daily drill
+- best times and solo wins
 - Infinity progress
-- Bot Arena records
-- settings and board zoom
-- public profile note/title
-- unlocked flags and equipped flag
-- reward history
+- Bot Arena record
+- keybinds and gameplay settings
+- board zoom
+- profile picture, title, and field note
+- equipped flag, flag copies, and reward history
+- daily drill progress
 
-Guest progress is separate from every signed-in account.
+Guest progress is stored separately from every account.
 
 ## Run locally
 
-Install dependencies:
-
 ```bash
 python -m pip install -r requirements.txt
-```
-
-Start MineNova:
-
-```bash
 python server.py
 ```
 
-Open:
+Then open:
 
 ```text
 http://127.0.0.1:8000
 ```
 
-## Railway update
+## Update the live Railway deployment
 
-Keep your existing Railway service, `/data` volume, database, domain, and `MINENOVA_SECRET`.
+Use the **same Railway service, GitHub repository, `/data` volume, domain, and `MINENOVA_SECRET`**.
 
-Replace the old project files in the same GitHub repository with the 5.0 files and commit them. Railway should redeploy automatically.
+Replace the old source files in the same GitHub repository with the 6.0 files and commit them. Let Railway deploy the newest commit.
 
-After deployment, open:
+Do **not** wipe `minenova-volume`.
+
+After Railway reports **Active**, check:
 
 ```text
 https://YOUR-SITE/health
 ```
 
-You should see a response containing:
+It should contain:
 
 ```json
-{"ok":true,"version":"5.0"}
+{"ok":true,"version":"6.0"}
 ```
 
-Do **not** wipe the Railway volume when updating. Existing accounts, ratings, match history, and progress are migrated through the existing `progress_json` field and remain compatible.
+Then hard-refresh the game once (`Ctrl + Shift + R`).
 
-See `DEPLOY_RAILWAY.md` for the hosting setup.
+Existing accounts, ratings, match history, leaderboards, and progress remain compatible because the new profile/cosmetic data continues to live inside the existing `progress_json` field.
 
 ## Main files
 
-- `index.html` — full game client/UI
-- `server.py` — FastAPI API, accounts, public profiles, matchmaking, WebSockets, SQLite
+- `index.html` — game client and UI
+- `server.py` — FastAPI accounts, profiles, rankings, matchmaking, WebSockets, and SQLite
 - `requirements.txt` — Python dependencies
-- `Dockerfile` — deployment image
-- `start.sh` / `start.bat` — local launchers
+- `Dockerfile` — Railway/container deployment
+- `DEPLOY_RAILWAY.md` — hosting/update instructions
+- `CHANGELOG.md` — release history
 
 ## Production notes
 
 - Keep `MINENOVA_SECRET` private.
-- Keep SQLite on persistent storage (`/data` on Railway).
-- Keep one server replica for now because active matchmaking state is held in memory.
-- Do not commit `minenova.db` or `.env`.
+- Keep the SQLite database on persistent `/data` storage.
+- Keep one Railway replica for now because active match state is in server memory.
+- Do not commit `minenova.db` or a real `.env` file.

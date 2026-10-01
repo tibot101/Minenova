@@ -1,81 +1,62 @@
-# Deploy MineNova 5.0 on Railway
+# Deploy / update MineNova 6.0 on Railway
 
-MineNova serves both the website and the FastAPI/WebSocket backend from one service.
+MineNova serves the website, FastAPI API, WebSocket matchmaking server, and SQLite-backed account system from one Railway service.
 
-## 1. Put the project in a GitHub repository
-Upload the project files from this folder to a repository. Do not upload a generated `minenova.db` file or a real `.env` file.
+## Updating an existing MineNova deployment
 
-## 2. Create a Railway project
-- Create a new Railway project.
-- Choose **Deploy from GitHub repo** and select the MineNova repository.
-- Railway will see the included `Dockerfile` and build it.
+If your game is already online, **do not create a new Railway project**.
 
-## 3. Add persistent storage
-Attach one Railway Volume to the MineNova service.
+1. Extract the MineNova 6.0 ZIP.
+2. Replace the old files in the **same GitHub repository** with the 6.0 files.
+3. Commit the changes to the branch Railway is connected to (usually `main`).
+4. Wait for Railway to build/deploy the new commit.
+5. Keep the existing `minenova-volume`, `/data` mount, public domain, and `MINENOVA_SECRET`.
+6. Do **not** wipe the volume.
+7. When the deployment is Active, open `/health` and verify it reports `"version":"6.0"`.
+8. Hard-refresh the game once with `Ctrl + Shift + R`.
 
-Recommended mount path:
+The 6.0 update does not require a destructive database migration. New keybind/profile/cosmetic fields are stored in existing account progress JSON.
+
+## New installation
+
+### 1. Put the project in GitHub
+Upload the project files to a repository. Do not upload `minenova.db` or a real `.env` file.
+
+### 2. Deploy the repository on Railway
+Create a Railway project and choose **Deploy from GitHub repo**. The included `Dockerfile` handles the build/start command.
+
+### 3. Attach persistent storage
+Attach a Railway Volume to the MineNova service with mount path:
 
 ```text
 /data
 ```
 
-The server automatically detects Railway's volume mount and uses `/data/minenova.db` unless `MINENOVA_DB` overrides it.
+MineNova stores SQLite at `/data/minenova.db` on Railway unless `MINENOVA_DB` explicitly overrides it.
 
-## 4. Add the production secret
-In the service's Variables page, add:
+### 4. Add the production secret
+In Railway → MineNova → Variables, add:
 
 ```text
-MINENOVA_SECRET=<your-random-secret>
+MINENOVA_SECRET=<a-long-random-private-value>
 ```
 
-Generate one locally with:
+Keep it private and never commit it to GitHub.
 
-```bash
-python -c "import secrets; print(secrets.token_urlsafe(48))"
-```
-
-Do not publish or commit the generated value.
-
-`HOST` is already set to `0.0.0.0` in the Dockerfile. Railway supplies `PORT` automatically.
-
-## 5. Configure health checking
-Set the service Healthcheck Path to:
+### 5. Health check
+Set Railway's Healthcheck Path to:
 
 ```text
 /health
 ```
 
-## 6. Generate the public URL
-Open the service Settings page -> Networking -> Public Networking -> Generate Domain.
+### 6. Public networking
+Generate a public domain in Railway's Networking settings. HTTPS is provided by Railway and MineNova automatically uses secure `wss://` WebSockets on HTTPS.
 
-Open the generated HTTPS URL. The game automatically switches its WebSocket connection to `wss://` when served over HTTPS.
+## Realtime multiplayer
+MineNova prefers WebSockets for ranked play and automatically uses its authenticated HTTP-sync fallback when WebSockets are unavailable. Both transports use server-authoritative boards/actions.
 
+Test deployment with two different accounts in two different browsers/devices, queueing the same difficulty.
 
-## Realtime reliability
-MineNova prefers secure WebSockets (`wss://`) for ranked play. MineNova 5.0 includes an authenticated HTTP-sync fallback. If a browser/network blocks WebSockets, players can still queue, match, play, finish, and rematch. The multiplayer window shows which transport is active.
-
-## 7. Test real matchmaking
-- Open the public URL in two separate browser profiles/devices.
-- Create two accounts.
-- Queue the same ranked difficulty.
-- Confirm both players enter the same match and the leaderboard updates afterward.
-
-## Important scaling note
-Keep the service at **one replica** for this version. Matchmaking and live match state are currently held in memory, while account/rating/history data live in SQLite. Multiple replicas would need a shared realtime state layer such as Redis plus a shared database.
-
-## Updating the game
-Push changes to the connected GitHub repository. Railway can redeploy from the new commit. The attached volume keeps the SQLite account database across deployments.
-
-## Custom domain
-After the Railway URL works, add a custom domain from Railway's Networking settings and follow the DNS records Railway gives you. TLS/HTTPS is handled by Railway.
-
-
-## Updating from an older MineNova version
-- Keep the existing Railway service.
-- Keep the existing `minenova-volume` mounted at `/data`.
-- Keep the same `MINENOVA_SECRET`.
-- Replace/commit the updated source files in the same GitHub repository.
-- Let Railway deploy the newest commit.
-- Do **not** wipe the volume; the existing accounts, ratings, and match history are compatible.
-- Confirm `/health` reports `"version":"5.0"`.
-- MineNova 5.0 sends no-cache headers for the main HTML, reducing stale-client problems after future updates.
+## Scaling note
+Keep **one replica** for this version. Persistent account/rating/history data is in SQLite, but active queues and live matches are held in the server process. Scaling to multiple replicas would require shared realtime state (for example Redis) plus a shared production database.
