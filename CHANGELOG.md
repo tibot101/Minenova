@@ -1,32 +1,48 @@
-# MineNova 7.0 — Analysis Lab
+# MineNova changelog
 
-## New: Analysis Lab
-- Stores recent field replays per account/browser.
-- Replays show the board state, mouse/cursor path, reveal inputs, flags, chords and timing.
-- Scrubbable timeline plus 0.5x / 1x / 2x / 4x playback.
-- Field IQ score and grade.
-- Tracks first-action time, reveal/flag/chord inputs, wrong flags, missed mines, risky reveals, max hesitation, accuracy, efficiency, mouse travel and score.
-- Tracks 25/50/75/100% pacing splits live during a field.
-- Tracks completion time for each board quadrant.
-- Adds a live pace estimate and grade in the game sidebar.
-- Lifetime analysis summary syncs with signed-in cloud progress; detailed replay traces stay local to that account/browser to keep cloud saves small.
+## 8.0 - Field Economy
 
-## Practice / seed integrity
-- Replaying the same seed is now explicitly Practice mode.
-- Manually entering a seed also starts a Practice field.
-- Practice fields never change XP, records, flag drops, streaks, total chords or daily mission progress.
-- Added a visible “Practice seed · no progression” indicator.
-- Replaying now preserves the exact displayed seed label and exact original field across repeated replays.
+### Added
+- Account-scoped coin wallet.
+- Size, density, mode, speed, and clean-play based coin payouts.
+- 24-hour global rotating Field Shop.
+- Shop-exclusive flags.
+- Shop-exclusive profile pictures.
+- Profile banners.
+- Collectible nametags.
+- Animated username effects.
+- Lifetime earned/spent and daily wallet stats.
+- Shareable Analysis Lab replay links.
+- Server-backed replay storage with public replay viewing.
+- Replay action heatmap.
+- Personal same-difficulty performance comparisons.
+- Analysis coaching notes.
+- Pace, Precision, Efficiency, Logic, and Consistency breakdowns.
+- Flag accuracy, flag correction, repeated-input, idle-time, APM, and safe-cells-per-input metrics.
+- Live efficiency, risk, and input-rate stats.
+- Advanced Gameplay / Visual / Audio / Controls settings pages.
+- Multiple victory effect styles.
+- Sound volume control.
+- Motion-level, timer-tenths, board-grid, number-palette, and chord-glow controls.
+- Leaderboard profile pictures, nametags, and name effects.
 
-## Fixes
-- Final elapsed time is captured exactly when a field ends instead of depending on the last 120 ms timer tick.
-- Fixed practice chords being able to increment daily mission progress.
-- Fixed repeated seed replay state drifting after replaying more than once.
-- Bot/local race analysis now finalizes even when the opponent finishes first.
-- Ranked Analysis Lab replays use server snapshots rather than exposing hidden mine locations.
-- Analysis history is isolated by signed-in account, matching the rest of MineNova progression.
+### Changed
+- Question-mark marking was removed. Right-click now strictly toggles flags.
+- Shop-only flags are visible in the locker but cannot drop from normal wins.
+- Analysis Lab was renamed and expanded to Analysis Lab Pro.
+- Progress payload allowance increased for expanded account data.
+- Website copy no longer uses em or en dashes.
 
-## Compatibility
-- Server version is now 7.0.
-- Existing accounts, ratings, flags, profiles, matchmaking and SQLite volume remain compatible.
-- Do not wipe the Railway volume when upgrading.
+### Fixed
+- Replayed/manual seeds cannot earn coins or other progression.
+- Same eligible seed reward keys prevent accidental duplicate coin payout.
+- Shop flags no longer leak into the normal flag-drop table.
+- Economy merge prefers the newer wallet state when cloud/local progress differs.
+- Shop avatar/profile ownership is validated before equipping.
+- Public cosmetic rendering falls back safely for unknown IDs.
+- Shared replays are validated, sanitized, size capped, and database bounded.
+
+## 7.0 - Analysis Lab
+- Detailed local replay telemetry and cursor playback.
+- Field IQ, live pacing, splits, mistakes, hesitation, accuracy, efficiency, and travel metrics.
+- Practice-seed progression integrity.

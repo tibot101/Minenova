@@ -1,135 +1,155 @@
-# MineNova 7.0 — Modern Field
+# MineNova 8.0 - Field Economy
 
-MineNova is a full-stack Minesweeper game with solo play, Infinity runs, Bot Arena, local co-op, account-scoped progression, collectible flags, public profiles, and server-backed ranked PvP.
+MineNova is a full-stack modern Minesweeper game with solo play, Infinity runs, Bot Arena, local co-op, profiles, cosmetic progression, advanced match analysis, and server-backed ranked PvP.
 
 Created by **Tibot101**.
 
-## Analysis Lab (7.0)
+## What is new in 8.0
 
-MineNova now records advanced local match telemetry for the active account. Open **Analysis Lab** from the left navigation to inspect recent fields and replay them with the recorded cursor path. Metrics include Field IQ, pace splits, quadrant completion, first action, reveals, flags, chords, wrong flags, missed mines, risky clicks, hesitation, accuracy, efficiency and mouse travel.
+### Field Shop and coin economy
 
-Detailed replay traces are kept locally per account/browser so they do not bloat cloud profile saves. Lifetime analysis totals are included in normal account progress sync. Ranked replays use only information the server actually revealed to the player.
+MineNova now has an account-scoped coin wallet and a rotating 24-hour cosmetic shop.
 
-### Seed replay integrity
+Eligible wins pay coins based on:
+- safe-cell count
+- mine count and field density
+- game mode
+- clear speed
+- clean play
+- Infinity round or Bot Arena difficulty where relevant
 
-A replayed seed or manually entered seed is now a **Practice** run. Practice is intentionally excluded from XP, personal records, flag drops, streaks, total chord progression and daily missions. This prevents memorized boards from affecting progression while still allowing exact practice and analysis.
+Large and difficult fields pay substantially more than small fields. Ranked wins and stronger bots have higher payout multipliers. Replayed seeds and manually entered practice seeds pay **zero coins** and cannot be used to farm progression.
 
-## What is new in 7.0
+The shop rotates globally once every 24 hours and contains eight offers per rotation:
+- 3 shop-exclusive flags
+- 2 shop-exclusive profile pictures
+- 1 profile banner
+- 1 nametag
+- 1 animated name effect
 
-### Modern Minesweeper visual refresh
-- Reworked the 5.0 workbench/classic look into a cleaner modern field UI while keeping recognizable Minesweeper tiles and clue colors.
-- Modern dark minefield backdrop, cleaner navigation, softer depth, tighter board chrome, and responsive hover/press/reveal motion.
-- High-contrast clue colors for 1–8.
-- Stable planted flags: unchanged cells are no longer destroyed and rebuilt during timer/online updates.
-- One-shot planting motion only when a flag is actually placed.
-- Modal, screen, board-reveal, button, tutorial-target, and reward animations with `prefers-reduced-motion` support.
+Shop prices are deterministic for the rotation. Purchases and wallet history are saved per account and cloud synced through the existing progress system.
 
-### MineNova Academy tutorial
-The tutorial is now an 8-lesson visual course:
-1. Clear safe tiles
-2. Read number clues
-3. Flag known mines
-4. Chord safely
-5. Recognize the 1–2–1 pattern
-6. Mouse and keyboard controls
-7. Game modes
-8. Guided practice
+### New cosmetic types
 
-The guided practice runs on a real training board and walks through **reveal → flag → chord**. The controls lesson displays the player's current remapped keys.
+In addition to the existing field-drop flag collection, players can now collect:
+- shop-only flags
+- profile banners
+- profile pictures
+- nametags
+- animated username effects
 
-### Fully remappable controls
-Settings now contains a keybind editor for:
-- Solo/online movement
-- Reveal, flag, and chord
-- Pause, New Field, replay, home, locker, and focus mode
-- Both local co-op players
-- Mouse-owner swap
+Purchased profile cosmetics can be equipped from the Profile page. Nametags and name effects also appear on supported leaderboard/player-name surfaces. Shop flags cannot appear in normal victory drops.
 
-Keybinds are saved per account and synced with cloud progress. Mouse/touch controls always remain available.
+### Shareable replays
 
-### Profile pictures
-- Added 12 selectable profile-picture badges.
-- The selected picture appears in the account chip, Mine Room, and public profile.
-- Profile picture, title, and field note are account-scoped and cloud synced.
+Analysis Lab replays can now be uploaded to the MineNova server and shared with an eight-character replay link. Opening the link loads the replay directly into Analysis Lab.
 
-### Duplicate flag drops
-The Flag Locker still contains 36 flags across:
-- Common
-- Uncommon
-- Rare
-- Epic
-- Legendary
-- Mythic
+Replay uploads are sanitized and size-limited by the server. Sharing requires a signed-in account, while viewing a shared replay is public. The server keeps a bounded replay library to prevent uncontrolled database growth.
 
-Wins now roll from the **entire** loot table, so duplicates are possible from the beginning. Higher rarities have much lower drop weights, making strong cosmetics genuinely difficult to collect.
+### Analysis Lab Pro
 
-The locker tracks copy counts (`×2`, `×3`, etc.). Duplicate drops also give a small salvage bonus, with rarer duplicates worth more salvage.
+The post-game analysis system now includes:
+- Field IQ
+- Pace, Precision, Efficiency, Logic, and Consistency scores
+- first-action time
+- reveal, flag, and chord input counts
+- wrong flags
+- missed mines
+- flag accuracy
+- flag corrections
+- repeated inputs
+- risky reveals
+- longest and average hesitation
+- idle-time percentage
+- actions per minute
+- safe cells per input
+- input efficiency
+- cursor travel distance
+- 25%, 50%, 75%, and 100% board milestones
+- quadrant completion times
+- personal comparison against recent eligible runs on the same difficulty
+- automatic coaching notes
+- action heatmap overlay
+- replay speeds from 0.25x through 8x
+- shareable replay links
 
-### Performance and bug fixes
-- Fixed flags appearing to reload/flicker on repeated HUD and online updates.
-- Board rendering now reuses existing cell DOM nodes and only updates cells whose visible state changed.
-- Removed an expensive full sidebar/home rerender from the 120 ms HUD timer.
-- Fixed a local co-op/global-shortcut conflict by routing multiplayer controls before global shortcuts.
-- Settings no longer rebuild the board for unrelated preference changes.
-- Public profiles now expose the selected profile picture safely through the server API.
-- Existing WebSocket + HTTP fallback matchmaking remains compatible.
+The live analysis panel now also shows current efficiency, risk-click count, and inputs per minute in addition to pace and section splits.
 
-## Game modes
+### Advanced settings
+
+Settings are now split into Gameplay, Visual, Audio, and Controls sections.
+
+New options include:
+- chord-ready glow
+- auto pause when an eligible solo tab loses focus
+- live-analysis visibility
+- timer tenths
+- motion level
+- victory effect selection
+- number color palette
+- board grid texture
+- board zoom
+- sound-effects volume
+- the existing fully remappable keybind editor
+
+Victory effects currently include Confetti Burst, Nova Fireworks, Golden Field Sweep, and None.
+
+### Question marks removed
+
+MineNova now uses a simple two-state mark system:
+
+`unmarked -> flag -> unmarked`
+
+There is no question-mark tile state or setting anymore.
+
+### Fixes and integrity changes
+
+- Shop-exclusive flags are excluded from normal victory-drop rolls.
+- Economy state uses a timestamp-aware account merge so an older cloud save is less likely to overwrite newer offline wallet progress.
+- Replay/practice boards remain excluded from XP, records, flag drops, missions, coins, and competitive progression.
+- Public profiles now safely expose equipped banners, nametags, and name effects.
+- Ranked leaderboard rows can display equipped profile pictures and username cosmetics.
+- Shared replay payloads are sanitized and capped server-side.
+- Progress payload capacity was increased for the expanded cosmetic/economy state.
+- Long em/en dash characters were removed from website copy.
+
+## Existing modes
 
 ### Classic / Sprint / Zen
-Beginner, Intermediate, Expert, Master, Custom, seeded boards, and the Daily Field.
+Beginner, Intermediate, Expert, Master, Custom, seeded practice, and Daily Field.
 
 ### Infinity
-Clear increasingly difficult boards in one run. One loss ends the run. Best round and total clears are saved per account.
+Clear progressively harder fields in a single run. One loss ends the run.
 
 ### Bot Arena
-Race an identical board against:
-- Rookie
-- Club Player
-- Expert
-- Nightmare
-
-The bot uses visible clues and risk estimates rather than reading hidden mines directly.
+Race an identical board against Rookie, Club Player, Expert, or Nightmare bots.
 
 ### Local co-op
-All keyboard controls are remappable in Settings. Defaults:
-
-Player 1:
-- `W A S D` move
-- `Space` reveal
-- `F` flag
-- `G` chord
-
-Player 2:
-- Arrow keys move
-- `Enter` reveal
-- `Right Shift` flag
-- `\\` chord
-
-`Tab` swaps mouse ownership.
+Two players share a field. All keyboard controls are remappable in Settings.
 
 ### Ranked online
-- Account login and cloud progress
-- Beginner / Intermediate / Expert queues
-- Overall + three independent ranked leaderboards
-- Server-authoritative boards/actions
-- WebSocket realtime with authenticated HTTP-sync fallback
-- Reconnect grace, emotes, rematches, and match history
+- account login and cloud progress
+- Beginner, Intermediate, and Expert queues
+- Overall plus three independent ranked leaderboards
+- server-authoritative ranked fields/actions
+- WebSocket realtime with authenticated HTTP fallback
+- reconnect grace, emotes, rematches, and match history
 
-## Account-scoped progress
+## Account-scoped progression
 
-Each signed-in account has its own:
-- XP and level
-- best times and solo wins
+Each signed-in player keeps separate:
+- XP and solo records
 - Infinity progress
 - Bot Arena record
-- keybinds and gameplay settings
-- board zoom
-- profile picture, title, and field note
-- equipped flag, flag copies, and reward history
+- keybinds and settings
+- Analysis lifetime stats
+- coin wallet and purchase history
+- profile picture, banner, nametag, and name effect
+- flags and duplicate counts
+- equipped cosmetics
 - daily drill progress
 
-Guest progress is stored separately from every account.
+Guest data remains separate from every signed-in account.
 
 ## Run locally
 
@@ -144,13 +164,11 @@ Then open:
 http://127.0.0.1:8000
 ```
 
-## Update the live Railway deployment
+## Update Railway
 
-Use the **same Railway service, GitHub repository, `/data` volume, domain, and `MINENOVA_SECRET`**.
+Keep the same Railway project, service, GitHub repository, `/data` volume, domain, and `MINENOVA_SECRET`.
 
-Replace the old source files in the same GitHub repository with the 7.0 files and commit them. Let Railway deploy the newest commit.
-
-Do **not** wipe `minenova-volume`.
+Replace the source files in the same GitHub repository with the 8.0 files and commit them. Do not wipe `minenova-volume`.
 
 After Railway reports **Active**, check:
 
@@ -158,28 +176,20 @@ After Railway reports **Active**, check:
 https://YOUR-SITE/health
 ```
 
-It should contain:
+It should include:
 
 ```json
-{"ok":true,"version":"7.0"}
+{"ok":true,"version":"8.0"}
 ```
 
-Then hard-refresh the game once (`Ctrl + Shift + R`).
+Then hard-refresh once with `Ctrl + Shift + R`.
 
-Existing accounts, ratings, match history, leaderboards, and progress remain compatible because the new profile/cosmetic data continues to live inside the existing `progress_json` field.
-
-## Main files
-
-- `index.html` — game client and UI
-- `server.py` — FastAPI accounts, profiles, rankings, matchmaking, WebSockets, and SQLite
-- `requirements.txt` — Python dependencies
-- `Dockerfile` — Railway/container deployment
-- `DEPLOY_RAILWAY.md` — hosting/update instructions
-- `CHANGELOG.md` — release history
+8.0 adds the `shared_replays` SQLite table automatically with `CREATE TABLE IF NOT EXISTS`, so existing accounts, ranked ratings, history, and progress remain compatible.
 
 ## Production notes
 
 - Keep `MINENOVA_SECRET` private.
-- Keep the SQLite database on persistent `/data` storage.
-- Keep one Railway replica for now because active match state is in server memory.
+- Keep SQLite on the persistent `/data` volume.
+- Keep one Railway replica for now because active matchmaking state is in process memory.
 - Do not commit `minenova.db` or a real `.env` file.
+- Replay sharing uses database storage. The server keeps only the newest bounded set of shared replays.

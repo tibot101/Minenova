@@ -50,7 +50,7 @@ async def lifespan(_: FastAPI):
     yield
 
 
-app = FastAPI(title="MineNova Server", version="7.0", lifespan=lifespan)
+app = FastAPI(title="MineNova Server", version="8.0", lifespan=lifespan)
 
 
 def db() -> sqlite3.Connection:
@@ -108,10 +108,19 @@ def init_db() -> None:
                 PRIMARY KEY(user_id, mode),
                 FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
             );
+            CREATE TABLE IF NOT EXISTS shared_replays (
+                code TEXT PRIMARY KEY,
+                owner_id INTEGER,
+                payload_json TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                views INTEGER NOT NULL DEFAULT 0,
+                FOREIGN KEY(owner_id) REFERENCES users(id) ON DELETE SET NULL
+            );
             CREATE INDEX IF NOT EXISTS idx_users_rating ON users(rating DESC, wins DESC);
             CREATE INDEX IF NOT EXISTS idx_mode_ratings ON mode_ratings(mode, rating DESC, wins DESC);
             CREATE INDEX IF NOT EXISTS idx_history_p1 ON match_history(player1_id, played_at DESC);
             CREATE INDEX IF NOT EXISTS idx_history_p2 ON match_history(player2_id, played_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_shared_replays_created ON shared_replays(created_at DESC);
             """
         )
 
@@ -209,11 +218,21 @@ def public_user(row: sqlite3.Row, include_progress: bool = False) -> dict[str, A
         "streak": row["streak"],
         "bestStreak": row["best_streak"],
     }
+    try:
+        appearance_progress = json.loads(row["progress_json"] or "{}")
+        if not isinstance(appearance_progress, dict):
+            appearance_progress = {}
+    except Exception:
+        appearance_progress = {}
+    appearance_profile = appearance_progress.get("profile") if isinstance(appearance_progress.get("profile"), dict) else {}
+    appearance_cosmetics = appearance_progress.get("cosmetics") if isinstance(appearance_progress.get("cosmetics"), dict) else {}
+    out["appearance"] = {
+        "avatar": str(appearance_profile.get("avatar", "mine"))[:40],
+        "nameTag": str(appearance_cosmetics.get("equippedNameTag", "none"))[:60],
+        "nameEffect": str(appearance_cosmetics.get("equippedNameEffect", "none"))[:60],
+    }
     if include_progress:
-        try:
-            out["progress"] = json.loads(row["progress_json"] or "{}")
-        except Exception:
-            out["progress"] = {}
+        out["progress"] = appearance_progress
         out["modeRatings"] = get_mode_ratings(int(row["id"]))
     return out
 
@@ -256,6 +275,9 @@ def public_profile(row: sqlite3.Row) -> dict[str, Any]:
             "unlockedCount": max(1, len(set(map(str, unlocked)))),
             "totalDrops": safe_int(progress.get("rewardWins", 0)),
             "salvage": safe_int(cosmetics.get("salvage", 0)),
+            "equippedBanner": str(cosmetics.get("equippedBanner", "standard"))[:60],
+            "equippedNameTag": str(cosmetics.get("equippedNameTag", "none"))[:60],
+            "equippedNameEffect": str(cosmetics.get("equippedNameEffect", "none"))[:60],
         },
         "solo": {
             "xp": safe_int(progress.get("xp", 0)),
@@ -300,6 +322,10 @@ class ProgressPayload(BaseModel):
     progress: dict[str, Any]
 
 
+class ReplaySharePayload(BaseModel):
+    replay: dict[str, Any]
+
+
 @app.get("/")
 async def index() -> FileResponse:
     return FileResponse(ROOT / "index.html", headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
@@ -315,9 +341,9 @@ async def health() -> dict[str, Any]:
 async def register(body: AuthPayload) -> dict[str, Any]:
     username = body.username.strip()
     if not USERNAME_RE.fullmatch(username):
-        raise HTTPException(status_code=400, detail="Username must be 3–20 characters using letters, numbers, _ or -")
+        raise HTTPException(status_code=400, detail="Username must be 3-20 characters using letters, numbers, _ or -")
     if len(body.password) < 8 or len(body.password) > 128:
-        raise HTTPException(status_code=400, detail="Password must be 8–128 characters")
+        raise HTTPException(status_code=400, detail="Password must be 8-128 characters")
     now = utc_now()
     try:
         with db() as con:
@@ -365,11 +391,189 @@ async def profile(username: str) -> dict[str, Any]:
 @app.post("/api/progress")
 async def save_progress(body: ProgressPayload, user: sqlite3.Row = Depends(auth_user)) -> dict[str, Any]:
     raw = json.dumps(body.progress, separators=(",", ":"))
-    if len(raw) > 30_000:
+    if len(raw) > 60_000:
         raise HTTPException(status_code=413, detail="Progress payload too large")
     with db() as con:
         con.execute("UPDATE users SET progress_json=?, last_seen=? WHERE id=?", (raw, utc_now(), user["id"]))
     return {"ok": True}
+
+
+def sanitize_shared_replay(value: dict[str, Any]) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        raise HTTPException(status_code=400, detail="Invalid replay")
+    def num(name: str, lo: float, hi: float, default: float = 0.0) -> float:
+        try:
+            v = float(value.get(name, default))
+        except (TypeError, ValueError):
+            v = default
+        return max(lo, min(hi, v))
+    def text(name: str, limit: int, default: str = "") -> str:
+        v = str(value.get(name, default))[:limit]
+        return re.sub(r"[^A-Za-z0-9 _:.+/#-]", "", v)
+    def bound(raw: Any, lo: float, hi: float, default: float = 0.0) -> float:
+        try:
+            v = float(raw)
+        except (TypeError, ValueError, OverflowError):
+            v = default
+        if v != v:
+            v = default
+        return max(lo, min(hi, v))
+    w, h = int(num("w", 2, 40, 9)), int(num("h", 2, 30, 9))
+    m = int(num("m", 1, max(1, w * h - 1), 10))
+    total = w * h
+    def clean_indices(raw: Any, limit: int = 1500) -> list[int]:
+        if not isinstance(raw, list):
+            return []
+        out: list[int] = []
+        for x in raw[:limit]:
+            try:
+                i = int(x)
+            except (TypeError, ValueError):
+                continue
+            if 0 <= i < total:
+                out.append(i)
+        return out
+    actions: list[dict[str, Any]] = []
+    allowed_actions = {"reveal", "flag", "chord", "mine", "loss", "win"}
+    for a in (value.get("actions") or [])[:500]:
+        if not isinstance(a, dict):
+            continue
+        typ = str(a.get("type", ""))[:16]
+        if typ not in allowed_actions:
+            continue
+        try:
+            idx = int(a.get("i", -1))
+        except (TypeError, ValueError):
+            idx = -1
+        if idx < -1 or idx >= total:
+            continue
+        actions.append({
+            "t": int(bound(a.get("t", 0), 0, 7_200_000)),
+            "type": typ,
+            "i": idx,
+            "source": text_from(a.get("source", ""), 18),
+            "risk": bound(a.get("risk", 0), 0, 1),
+            "revealed": int(bound(a.get("revealed", 0), 0, total)),
+            "flags": int(bound(a.get("flags", 0), 0, m)),
+            "score": int(bound(a.get("score", 0), 0, 100_000_000)),
+        })
+    mouse: list[dict[str, Any]] = []
+    for q in (value.get("mouse") or [])[:700]:
+        if not isinstance(q, dict):
+            continue
+        try:
+            mouse.append({
+                "t": int(max(0, min(7_200_000, float(q.get("t", 0) or 0)))),
+                "x": max(0.0, min(1.0, float(q.get("x", 0) or 0))),
+                "y": max(0.0, min(1.0, float(q.get("y", 0) or 0))),
+            })
+        except (TypeError, ValueError):
+            continue
+    snapshots: list[dict[str, Any]] = []
+    for fr in (value.get("onlineFrames") or [])[:200]:
+        if not isinstance(fr, dict):
+            continue
+        revealed = []
+        for pair in (fr.get("revealed") or [])[:total]:
+            if not isinstance(pair, (list, tuple)) or len(pair) < 2:
+                continue
+            try:
+                i, clue = int(pair[0]), int(pair[1])
+            except (TypeError, ValueError):
+                continue
+            if 0 <= i < total and 0 <= clue <= 8:
+                revealed.append([i, clue])
+        snapshots.append({
+            "t": int(bound(fr.get("t", 0), 0, 7_200_000)),
+            "revealed": revealed,
+            "flags": clean_indices(fr.get("flags"), total),
+            "hits": clean_indices(fr.get("hits"), total),
+        })
+    stats = value.get("stats") if isinstance(value.get("stats"), dict) else {}
+    breakdown = value.get("breakdown") if isinstance(value.get("breakdown"), dict) else {}
+    sections_raw = value.get("sections") if isinstance(value.get("sections"), list) else []
+    sections = [None if x is None else int(bound(x, 0, 7_200_000)) for x in sections_raw[:4]]
+    while len(sections) < 4:
+        sections.append(None)
+    safe_stats: dict[str, Any] = {}
+    for k in ("firstAction", "reveals", "marks", "chords", "wrongFlags", "missedFlags", "risky", "maxHesitation", "avgHesitation", "flagCorrections", "repeatInputs", "idlePct", "actionsPerMin", "safePerInput", "accuracy", "efficiency", "mouseTravel", "speed", "flagAccuracy"):
+        v = stats.get(k)
+        if isinstance(v, (int, float)) and not isinstance(v, bool):
+            safe_stats[k] = max(0, min(10_000_000, float(v)))
+    safe_breakdown = {}
+    for k in ("pace", "precision", "efficiency", "logic", "consistency"):
+        v = breakdown.get(k)
+        if isinstance(v, (int, float)) and not isinstance(v, bool):
+            safe_breakdown[k] = max(0.0, min(100.0, float(v)))
+    return {
+        "id": text("id", 60, "shared"),
+        "type": text("type", 20, "solo"),
+        "level": text("level", 20, "custom"),
+        "seed": text("seed", 80, "shared"),
+        "w": w, "h": h, "m": m,
+        "won": bool(value.get("won", False)),
+        "practice": bool(value.get("practice", False)),
+        "elapsed": num("elapsed", 0, 7_200, 0),
+        "score": int(num("score", 0, 100_000_000, 0)),
+        "fieldIQ": int(num("fieldIQ", 0, 100, 0)),
+        "actions": actions,
+        "mouse": mouse,
+        "mines": clean_indices(value.get("mines"), total),
+        "sections": sections,
+        "stats": safe_stats,
+        "breakdown": safe_breakdown,
+        "onlineFrames": snapshots,
+        "createdAt": int(num("createdAt", 0, 9_999_999_999_999, 0)),
+    }
+
+
+def text_from(value: Any, limit: int) -> str:
+    return re.sub(r"[^A-Za-z0-9 _:.+/#-]", "", str(value or "")[:limit])
+
+
+@app.post("/api/replay/share")
+async def share_replay(body: ReplaySharePayload, user: sqlite3.Row = Depends(auth_user)) -> dict[str, Any]:
+    replay = sanitize_shared_replay(body.replay)
+    raw = json.dumps(replay, separators=(",", ":"))
+    if len(raw) > 220_000:
+        raise HTTPException(status_code=413, detail="Replay is too large to share")
+    alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+    with db() as con:
+        code = ""
+        for _ in range(12):
+            candidate = "".join(secrets.choice(alphabet) for _ in range(8))
+            try:
+                con.execute(
+                    "INSERT INTO shared_replays(code,owner_id,payload_json,created_at,views) VALUES(?,?,?,?,0)",
+                    (candidate, int(user["id"]), raw, utc_now()),
+                )
+                code = candidate
+                break
+            except sqlite3.IntegrityError:
+                continue
+        if not code:
+            raise HTTPException(status_code=503, detail="Could not create replay code")
+        con.execute(
+            "DELETE FROM shared_replays WHERE code IN (SELECT code FROM shared_replays ORDER BY created_at DESC LIMIT -1 OFFSET 5000)"
+        )
+    return {"ok": True, "code": code}
+
+
+@app.get("/api/replay/{code}")
+async def get_shared_replay(code: str) -> dict[str, Any]:
+    code = code.strip().upper()
+    if not re.fullmatch(r"[A-Z2-9]{8}", code):
+        raise HTTPException(status_code=400, detail="Invalid replay code")
+    with db() as con:
+        row = con.execute("SELECT r.*, u.username AS owner_username FROM shared_replays r LEFT JOIN users u ON u.id=r.owner_id WHERE r.code=?", (code,)).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Replay not found")
+        con.execute("UPDATE shared_replays SET views=views+1 WHERE code=?", (code,))
+    try:
+        replay = json.loads(row["payload_json"])
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail="Replay data is unavailable") from exc
+    return {"code": code, "replay": replay, "views": int(row["views"]) + 1, "owner": row["owner_username"]}
 
 
 @app.get("/api/leaderboard")
