@@ -1,10 +1,20 @@
-# MineNova 6.0 — Modern Field
+# MineNova 7.0 — Modern Field
 
 MineNova is a full-stack Minesweeper game with solo play, Infinity runs, Bot Arena, local co-op, account-scoped progression, collectible flags, public profiles, and server-backed ranked PvP.
 
 Created by **Tibot101**.
 
-## What is new in 6.0
+## Analysis Lab (7.0)
+
+MineNova now records advanced local match telemetry for the active account. Open **Analysis Lab** from the left navigation to inspect recent fields and replay them with the recorded cursor path. Metrics include Field IQ, pace splits, quadrant completion, first action, reveals, flags, chords, wrong flags, missed mines, risky clicks, hesitation, accuracy, efficiency and mouse travel.
+
+Detailed replay traces are kept locally per account/browser so they do not bloat cloud profile saves. Lifetime analysis totals are included in normal account progress sync. Ranked replays use only information the server actually revealed to the player.
+
+### Seed replay integrity
+
+A replayed seed or manually entered seed is now a **Practice** run. Practice is intentionally excluded from XP, personal records, flag drops, streaks, total chord progression and daily missions. This prevents memorized boards from affecting progression while still allowing exact practice and analysis.
+
+## What is new in 7.0
 
 ### Modern Minesweeper visual refresh
 - Reworked the 5.0 workbench/classic look into a cleaner modern field UI while keeping recognizable Minesweeper tiles and clue colors.
@@ -138,7 +148,7 @@ http://127.0.0.1:8000
 
 Use the **same Railway service, GitHub repository, `/data` volume, domain, and `MINENOVA_SECRET`**.
 
-Replace the old source files in the same GitHub repository with the 6.0 files and commit them. Let Railway deploy the newest commit.
+Replace the old source files in the same GitHub repository with the 7.0 files and commit them. Let Railway deploy the newest commit.
 
 Do **not** wipe `minenova-volume`.
 
@@ -151,7 +161,7 @@ https://YOUR-SITE/health
 It should contain:
 
 ```json
-{"ok":true,"version":"6.0"}
+{"ok":true,"version":"7.0"}
 ```
 
 Then hard-refresh the game once (`Ctrl + Shift + R`).

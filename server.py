@@ -50,7 +50,7 @@ async def lifespan(_: FastAPI):
     yield
 
 
-app = FastAPI(title="MineNova Server", version="6.0", lifespan=lifespan)
+app = FastAPI(title="MineNova Server", version="7.0", lifespan=lifespan)
 
 
 def db() -> sqlite3.Connection:

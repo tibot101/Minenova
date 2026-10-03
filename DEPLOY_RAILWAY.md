@@ -1,4 +1,4 @@
-# Deploy / update MineNova 6.0 on Railway
+# Deploy / update MineNova 7.0 on Railway
 
 MineNova serves the website, FastAPI API, WebSocket matchmaking server, and SQLite-backed account system from one Railway service.
 
@@ -6,16 +6,16 @@ MineNova serves the website, FastAPI API, WebSocket matchmaking server, and SQLi
 
 If your game is already online, **do not create a new Railway project**.
 
-1. Extract the MineNova 6.0 ZIP.
-2. Replace the old files in the **same GitHub repository** with the 6.0 files.
+1. Extract the MineNova 7.0 ZIP.
+2. Replace the old files in the **same GitHub repository** with the 7.0 files.
 3. Commit the changes to the branch Railway is connected to (usually `main`).
 4. Wait for Railway to build/deploy the new commit.
 5. Keep the existing `minenova-volume`, `/data` mount, public domain, and `MINENOVA_SECRET`.
 6. Do **not** wipe the volume.
-7. When the deployment is Active, open `/health` and verify it reports `"version":"6.0"`.
+7. When the deployment is Active, open `/health` and verify it reports `"version":"7.0"`.
 8. Hard-refresh the game once with `Ctrl + Shift + R`.
 
-The 6.0 update does not require a destructive database migration. New keybind/profile/cosmetic fields are stored in existing account progress JSON.
+The 7.0 update does not require a destructive database migration. New keybind/profile/cosmetic fields are stored in existing account progress JSON.
 
 ## New installation
 
